@@ -1,0 +1,235 @@
+/**********************************************************************
+*
+*  Filename:    mxml_util.c
+*  Description: Source file for Mini-MXL uitlity functions
+*  Version:     $Revision: 1.8 $
+*  Date:        $Date: 2014/09/27 12:43:11 $
+*
+*  This file is covered by the GNU General Public License.
+*  See licence.txt for more details.
+*  Copyright 2014 World Light Information Limited and
+*  Hong Kong Blind Union.
+*
+**********************************************************************/
+
+
+#include <stdlib.h>
+#include <string.h>
+
+#include "brl2mml.h"
+#include "private.h"
+
+
+mxml_node_t*
+get_first_element(mxml_node_t* x)
+{
+    for (x = mxmlGetFirstChild(x);  x;  x = mxmlGetNextSibling(x))
+        if (mxmlGetElement(x))  break;
+    return x;
+}
+
+
+mxml_node_t*
+get_last_element(mxml_node_t* x)
+{
+    for (x = mxmlGetLastChild(x);  x;  x = mxmlGetPrevSibling(x))
+        if (mxmlGetElement(x))  break;
+    return x;
+}
+
+
+mxml_node_t*
+get_next_element(mxml_node_t* x)
+{
+    for (x = mxmlGetNextSibling(x);  x;  x = mxmlGetNextSibling(x))
+        if (mxmlGetElement(x))  break;
+    return x;
+}
+
+
+const char*
+get_element_text(mxml_node_t* x)
+{
+    int         whitespace;
+    const char* text = NULL;
+    if (x)  x = mxmlGetFirstChild(x);
+    if (x)  text = mxmlGetText(x, &whitespace);
+    if (!text)  text = "";
+    return text;
+}
+
+
+mxml_node_t*
+bypass_style_and_indices(mxml_node_t* x)
+{
+    const char* name;
+
+    if (!x)  return NULL;
+    name = mxmlGetElement(x);
+
+    // Ignore outer nodes with style or index information
+    while ((strcmp(name, "mstyle") == 0) ||
+            (strcmp(name, "msub") == 0) ||
+            (strcmp(name, "msup") == 0) ||
+            (strcmp(name, "msubsup") == 0) ||
+            (strcmp(name, "munder") == 0) ||
+            (strcmp(name, "mover") == 0) ||
+            (strcmp(name, "munderover") == 0) ||
+            (strcmp(name, "mmultiscripts") == 0))
+    {
+        x = get_first_element(x);
+        if (!x)  return NULL;
+        name = mxmlGetElement(x);
+    }
+    return x;
+}
+
+
+mxml_node_t*
+group_siblings(const char* name, mxml_node_t* first, mxml_node_t* last)
+{
+    mxml_node_t* outer = mxmlNewElement(MXML_NO_PARENT, name);
+    mxmlAdd(mxmlGetParent(first), MXML_ADD_BEFORE, first, outer);
+    for (;;)
+    {
+        mxml_node_t* elem = first;
+        first = mxmlGetNextSibling(first);
+        mxmlAdd(outer, MXML_ADD_AFTER, MXML_ADD_TO_PARENT, elem);
+        if (elem == last)  break;
+        if (!first)  break;
+    }
+    return outer;
+}
+
+
+mxml_node_t*
+simplify_single_child_mrow(mxml_node_t* mrow)
+{
+    if (get_first_element(mrow) == get_last_element(mrow))
+    {
+        mxml_node_t* child = get_first_element(mrow);
+        mxmlAdd(mxmlGetParent(mrow), MXML_ADD_BEFORE, mrow, child);
+        mxmlDelete(mrow);
+        mrow = child;
+    }
+    return mrow;
+}
+
+
+mxml_node_t*
+apply_operator(mxml_node_t* x, const char* name, const char* op)
+{
+    mxml_node_t* mo = mxmlNewElement(MXML_NO_PARENT, "mo");
+    mxml_node_t* outer;
+    mxmlNewText(mo, 0, op);
+    mxmlAdd(mxmlGetParent(x), MXML_ADD_AFTER, x, mo);
+    remove_round_bracket(x);
+    return group_siblings(name, x, mo);
+}
+
+
+int
+is_xml_element(mxml_node_t* x, const char* name)
+{
+    const char* tag;
+    if (!x)  return 0;
+    tag = mxmlGetElement(x);
+    if (!tag)  return 0;
+    return (strcmp(tag, name) == 0);
+}
+
+
+int
+is_operator(mxml_node_t* x, const char* op)
+{
+    const char* name;
+
+    // Ignore style and indices
+    x = bypass_style_and_indices(x);
+    if (!x)  return 0;
+    name = mxmlGetElement(x);
+
+    // Name of operator is inside <mo>
+    if (strcmp(name, "mo") != 0)  return 0;
+    else if (!op)  return 1;
+    else
+    {
+        const char* mo = get_element_text(x);
+        return (strcmp(mo, op) == 0);
+    }
+}
+
+
+int
+is_identifier(mxml_node_t* x, const char* id)
+{
+    const char* name;
+
+    // Ignore style and indices
+    x = bypass_style_and_indices(x);
+    if (!x)  return 0;
+    name = mxmlGetElement(x);
+
+    // Name of identifier is inside <mi>
+    if (strcmp(name, "mi") != 0)  return 0;
+    else if (!id)  return 1;
+    else
+    {
+        const char* mi = get_element_text(x);
+        return (strcmp(mi, id) == 0);
+    }
+}
+
+
+int
+is_number(mxml_node_t* x, const char* num)
+{
+    const char* name;
+
+    // Ignore style and indices
+    x = bypass_style_and_indices(x);
+    if (!x)  return 0;
+    name = mxmlGetElement(x);
+
+    // Value of number is inside <mn>
+    if (strcmp(name, "mn") != 0)  return 0;
+    else if (!num)  return 1;
+    else
+    {
+        const char* mn = get_element_text(x);
+        return (strcmp(mn, num) == 0);
+    }
+}
+
+
+void
+remove_round_bracket(mxml_node_t* x)
+{
+    // Make sure it is a <mfenced> node
+    if (strcmp(mxmlGetElement(x), "mfenced") != 0)  return;
+
+    // Make sure it is enclosed in round brackets
+    if (strcmp(mxmlElementGetAttr(x, "open"), "(") != 0)  return;
+    if (strcmp(mxmlElementGetAttr(x, "close"), ")") != 0)  return;
+
+    // Convert outer element to <mrow>
+    mxmlSetElement(x, "mrow");
+    mxmlElementDeleteAttr(x, "open");
+    mxmlElementDeleteAttr(x, "close");
+    mxmlElementDeleteAttr(x, "separators");
+}
+
+
+mxml_node_t*
+new_unit_element(mxml_node_t* x, const char* unit)
+{
+    mxml_node_t* mspace = mxmlNewElement(x, "mspace");
+    mxml_node_t* mi = mxmlNewElement(x, "mi");
+    mxmlElementSetAttr(mspace, "width", "0.25em");
+    mxmlElementSetAttr(mi, "mathvariant", "normal");
+    mxmlNewText(mi, 0, unit);
+    return mi;
+}
+
+
+/* vim: set nowrap cindent tabstop=8 softtabstop=4 expandtab shiftwidth=4: */
