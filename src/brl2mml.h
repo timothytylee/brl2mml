@@ -2,8 +2,6 @@
 *
 *  Filename:    brl2mml.h
 *  Description: Header file for libbrl2mml
-*  Version:     $Revision: 1.4 $
-*  Date:        $Date: 2014/09/27 12:43:11 $
 *
 *  This file is covered by the GNU General Public License.
 *  See licence.txt for more details.

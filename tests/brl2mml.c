@@ -2,8 +2,6 @@
 *
 *  Filename:    brl2mml.c
 *  Description: Test program for libbrl2mml
-*  Version:     $Revision: 1.8 $
-*  Date:        $Date: 2014/09/27 12:43:11 $
 *
 *  This file is covered by the GNU General Public License.
 *  See licence.txt for more details.

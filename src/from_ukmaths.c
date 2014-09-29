@@ -2,8 +2,6 @@
 *
 *  Filename:    from_ukmaths.c
 *  Description: Source file for UK Maths functions in libbrl2mml
-*  Version:     $Revision: 1.25 $
-*  Date:        $Date: 2014/09/27 12:43:11 $
 *
 *  This file is covered by the GNU General Public License.
 *  See licence.txt for more details.

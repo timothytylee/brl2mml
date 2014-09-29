@@ -2,8 +2,6 @@
 *
 *  Filename:    test_util.c
 *  Description: Utility functions for test programs
-*  Version:     $Revision: 1.3 $
-*  Date:        $Date: 2014/09/27 12:43:11 $
 *
 *  This file is covered by the GNU General Public License.
 *  See licence.txt for more details.
