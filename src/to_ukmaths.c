@@ -118,7 +118,7 @@ digit_to_normal_brl(char c)
 
 /// @brief Translates string as normal braille digits
 static void
-translate_as_normal_digits(StrBuf* buf, const char* value)
+translate_normal_digits(StrBuf* buf, const char* value)
 {
     int is_recurring = 0;
     while (*value)
@@ -171,7 +171,7 @@ translate_as_normal_digits(StrBuf* buf, const char* value)
 
 /// @brief Translates string as lowered braille digits
 static void
-translate_as_lowered_digits(StrBuf* buf, const char* value)
+translate_lowered_digits(StrBuf* buf, const char* value)
 {
     while (*value)
     {
@@ -204,6 +204,155 @@ strip_trailing_space(StrBuf* buf)
 }
 
 
+/** @brief Looks up the translation of a standalone Latin identifier.
+    @return     @p NULL if the node is not a Latin identifier.
+    @return     The fount that preceeds the translated letter.
+    @param style    Math style.
+    @param x        The <mi> node to translate.
+    @param letter   The translated letter.
+  */
+static const char*
+lookup_latin(int style, mxml_node_t* x, char* letter)
+{
+    const char* name;
+    char        c;
+
+    // Ignore NULL nodes
+    if (!x)  return 0;
+
+    // Latin identifiers contain only one character
+    name = get_element_text(x);
+    if (strlen(name) != 1)  return 0;
+
+    // Lowercase Latin identifiers are translated as is
+    c = name[0];
+    if ((c >= 'a') && (c <= 'z'))
+    {
+        if (letter)  *letter = c;
+        switch (style)
+        {
+            case STYLE_BOLD:  return "@";
+            default:          return ";";
+        }
+    }
+
+    // Uppercase Latin identifiers are shown in lowercase
+    if ((c >= 'A') && (c <= 'Z'))
+    {
+        if (letter)  *letter = c - 'A' + 'a';
+        switch (style)
+        {
+            case STYLE_BOLD:  return "^";
+            default:          return ",";
+        }
+    }
+
+    // Report failed translation
+    return NULL;
+}
+
+
+/** @brief Looks up the translation of a standalone Greek identifier.
+    @return     @p NULL if the node is not a Greek identifier.
+    @return     The fount that preceeds the translated letter.
+    @param style    Math style.
+    @param x        The <mi> node to translate.
+    @param letter   The translated letter.
+  */
+static const char*
+lookup_greek(int style, mxml_node_t* x, char* letter)
+{
+    const char* greek_letters[] =
+    {
+        "Α", "α", "a",
+        "Β", "β", "b",
+        "Γ", "γ", "g",
+        "Δ", "δ", "d",
+        "Ε", "ε", "e",
+        "Ε", "ϵ", "e",  // Alternate form of lowercase epsilon (U+03f5)
+        "Ζ", "ζ", "z",
+        "Η", "η", ":",
+        "Θ", "θ", "?",
+        "ϴ", "ϑ", "?",  // Alternate form of theta (U+03f4, U+03d1)
+        "Ι", "ι", "i",
+        "Κ", "κ", "k",
+        "Κ", "ϰ", "k",  // Alternate form of lowercase kappa (U+03f0)
+        "Λ", "λ", "l",
+        "Μ", "μ", "m",
+        "Ν", "ν", "n",
+        "Ξ", "ξ", "x",
+        "Ο", "ο", "o",
+        "Π", "π", "p",
+        "Π", "ϖ", "p",  // Alternate form of lowercase pi (U+03d6)
+        "Ρ", "ρ", "r",
+        "Ρ", "ϱ", "r",  // Alternate form of lowercase rho (U+03f1)
+        "Σ", "σ", "s",
+        "Ϲ", "ϲ", "s",  // Alternate form of sigma (U+03f9, U+03f2)
+        "Τ", "τ", "t",
+        "Υ", "υ", "u",
+        "ϒ", "υ", "u",  // Alternate form of uppercase upsilon (U+03d2)
+        "Φ", "φ", "f",
+        "Φ", "ϕ", "f",  // Alternate form of lowercase phi (U+03d5)
+        "Χ", "χ", "&",
+        "Ψ", "ψ", "y",
+        "Ω", "ω", "w",
+
+        // List terminator
+        NULL
+    };
+
+    const char*  name;
+    const char** greek;
+
+    // Ignore NULL nodes
+    if (!x)  return 0;
+
+    // Check all known Greek identifiers 
+    name = get_element_text(x);
+    for (greek = greek_letters;  *greek;  greek += 3)
+    {
+        // Test for uppercase identifier
+        if (strcmp(name, greek[0]) == 0)
+        {
+            if (letter)  *letter = greek[2][0];
+            switch (style)
+            {
+                case STYLE_BOLD:  return "^_";
+                default:          return "_";
+            }
+        }
+
+        // Test for lowercase identifier
+        if (strcmp(name, greek[1]) == 0)
+        {
+            if (letter)  *letter = greek[2][0];
+            switch (style)
+            {
+                case STYLE_BOLD:  return "@.";
+                default:          return ".";
+            }
+        }
+    }
+
+    // Report failed translation
+    return NULL;
+}
+
+
+/** @brief Obtains fount for previous element.
+    @return     @p NULL if previous element is not an identifier.
+  */
+static const char*
+get_prev_fount(mxml_node_t* x)
+{
+    const char*  attr = NULL;
+    mxml_node_t* prev = get_prev_element(x);
+    if (prev)  attr = mxmlElementGetAttr(prev, "fount");
+    if (!attr)  attr = "";
+    return attr;
+}
+
+
 /// @brief Translates child nodes
 static void
 translate_children(int style, StrBuf* buf, mxml_node_t* x)
@@ -223,7 +372,7 @@ translate_children(int style, StrBuf* buf, mxml_node_t* x)
 
 /// @brief Translates node as a base
 static void
-translate_as_base(int style, StrBuf* buf, mxml_node_t* x)
+translate_base(int style, StrBuf* buf, mxml_node_t* x)
 {
     // Translate node into temporary buffer
     StrBuf* tmp_buf = create_buffer();
@@ -249,40 +398,82 @@ translate_as_base(int style, StrBuf* buf, mxml_node_t* x)
 }
 
 
+/// @brief Translates node as an overhead symbol
+static int
+translate_overhead_symbol(int style, StrBuf* buf, mxml_node_t* x)
+{
+    const char* overheads[] =
+    {
+        "¯",   ":",     // Dot 156
+        "ˆ",   "@:",    // Dot 4-156
+        "ˇ",   "@>",    // Dot 4-345
+        "~",   "^:",    // Dot 45-156
+        "···", "-'",    // Dot 36-3
+        "··",  "-",     // Dot 36
+        "·",   "'",     // Dot 3
+
+        // List terminator
+        NULL
+    };
+
+    const char*  text;
+    const char** oh;
+
+    // Ignore NULL nodes
+    if (!is_xml_element(x, "mo"))  return 0;
+    text = get_element_text(x);
+
+    // Check all known overhead symbols 
+    for (oh = overheads;  *oh;  oh += 2)
+    {
+        if (strcmp(text, oh[0]) != 0)  continue;
+        append_text(buf, oh[1]);
+        return 1;
+    }
+
+    // Nothing matched
+    return 0;
+}
+
+
 /// @brief Translates node as a subscript
 static void
-translate_as_subscript(int style, StrBuf* buf, mxml_node_t* x)
+translate_subscript(int style, StrBuf* buf, mxml_node_t* x)
 {
     // Numeric indices are encoded as lowered braille digits
     if (is_numeric_mn(x))
     {
-        translate_as_lowered_digits(buf, get_element_text(x));
+        translate_lowered_digits(buf, get_element_text(x));
         return;
     }
 
     // Dot 16 and 12456 encloses subscript
     append_char(buf, '*');
-    translate_as_base(style, buf, x);
+    if (!translate_overhead_symbol(style, buf, x))
+        translate_base(style, buf, x);
     append_char(buf, ']');
 }
 
 
 /// @brief Translates node as a superscript
 static void
-translate_as_superscript(int style, StrBuf* buf, mxml_node_t* x)
+translate_superscript(int style, StrBuf* buf, mxml_node_t* x)
 {
+    // Overhead symbols are appended directly
+    if (translate_overhead_symbol(style, buf, x))  return;
+
     // Dot 346 starts superscript
     append_char(buf, '+');
 
     // Numeric indices are encoded as lowered braille digits
     if (is_numeric_mn(x))
     {
-        translate_as_lowered_digits(buf, get_element_text(x));
+        translate_lowered_digits(buf, get_element_text(x));
         return;
     }
 
     // Dot 12456 ends superscript
-    translate_as_base(style, buf, x);
+    translate_base(style, buf, x);
     append_char(buf, ']');
 }
 
@@ -301,7 +492,7 @@ typedef struct
     @return     Non-zero value if translation was successful.
   */
 static int
-translate_as_symbolic_operator(int style, StrBuf* buf, const char* name)
+translate_symbolic_operator(int style, StrBuf* buf, const char* name)
 {
     const SymbolRec symbols[] =
     {
@@ -494,7 +685,7 @@ translate_as_symbolic_operator(int style, StrBuf* buf, const char* name)
     @return     Non-zero value if translation was successful.
   */
 static int
-translate_as_word_operator(int style, StrBuf* buf, const char* name)
+translate_word_operator(int style, StrBuf* buf, const char* name)
 {
     const char* abbreviations[] =
     {
@@ -575,7 +766,7 @@ translate_as_word_operator(int style, StrBuf* buf, const char* name)
 
 /// @brief Translates string as literal text
 static void
-translate_as_literal_text(StrBuf* buf, const char* str)
+translate_literal_text(StrBuf* buf, const char* str)
 {
     if (!str)  return;
     for (;  *str;  ++str)
@@ -606,128 +797,120 @@ translate_as_literal_text(StrBuf* buf, const char* str)
 }
 
 
-/** @brief Translates string as Latin identifier.
+/** @brief Translates <mi> containing Latin identifier.
     @return     Non-zero value if translation was successful.
   */
 static int
-translate_as_latin_identifier(int style, StrBuf* buf, const char* name)
+translate_latin_identifier(int style, StrBuf* buf, mxml_node_t* x)
 {
-    int  is_cap;
-    char c = *name;
+    char        letter;
+    const char* prev_fount;
+    const char* fount = lookup_latin(style, x, &letter);
+    if (!fount)  return 0;
 
-    // Latin identifier contains only one character
-    if (strlen(name) != 1)
-        return 0;
-    else if ((c >= 'a') && (c <= 'z'))
-        is_cap = 0;
-    else if ((c >= 'A') && (c <= 'Z'))
+    // Remember fount to support processing of consecutive identifiers
+    mxmlElementSetAttr(x, "fount", fount);
+
+    // Handle consecutive sequence
+    prev_fount = get_prev_fount(x);
+    if (strcmp(prev_fount, fount) != 0)
     {
-        is_cap = 1;
-        c = c - 'A' + 'a';
+        // Start of new fount
+        const char*  next_fount;
+        mxml_node_t* y = get_next_element(x);
+        if (!is_xml_element(y, "mi"))  y = NULL;
+        next_fount = lookup_latin(style, y, NULL);
+        if (next_fount && strcmp(fount, next_fount) == 0)
+        {
+            // Start of multiple identifiers with same fount
+            if      (strcmp(fount, ",") == 0)  fount = ",,";
+            else if (strcmp(fount, "@") == 0)  fount = "@@";
+            else if (strcmp(fount, "^") == 0)  fount = "^^";
+        }
     }
     else
-        return 0;
-
-    // Translate identifier now
-    if (is_cap)
     {
-        if (style == STYLE_BOLD)  append_text(buf, "^");
-        else                      append_text(buf, ",");
-    }
-    else
-    {
-        if (style == STYLE_BOLD)  append_text(buf, "@");
-        else                      append_text(buf, ";");
-    }
-    append_char(buf, c);
+        // Same fount as previous one
+        switch (letter)
+        {
+            case 'o':
+                // 'o' should always have fount sign
+                mxmlElementDeleteAttr(x, "fount");
+                break;
 
-    // Report successful translation
+            default:
+                fount = "";
+                break;
+        }
+    }
+
+    // Append translation
+    append_text(buf, fount);
+    append_char(buf, letter);
     return 1;
 }
 
 
-/** @brief Translates string as Greek identifier.
+/** @brief Translates <mi> containing Greek identifier.
     @return     Non-zero value if translation was successful.
   */
 static int
-translate_as_greek_identifier(int style, StrBuf* buf, const char* name)
+translate_greek_identifier(int style, StrBuf* buf, mxml_node_t* x)
 {
-    const char* greek_letters[] =
+    char        letter;
+    const char* prev_fount;
+    const char* fount = lookup_greek(style, x, &letter);
+    if (!fount)  return 0;
+
+    // Remember fount to support processing of consecutive identifiers
+    mxmlElementSetAttr(x, "fount", fount);
+
+    // Handle consecutive sequence
+    prev_fount = get_prev_fount(x);
+    if (strcmp(prev_fount, fount) != 0)
     {
-        "Α", "α", "a",
-        "Β", "β", "b",
-        "Γ", "γ", "g",
-        "Δ", "δ", "d",
-        "Ε", "ε", "e",
-        "Ε", "ϵ", "e",  // Alternate form of lowercase epsilon (U+03f5)
-        "Ζ", "ζ", "z",
-        "Η", "η", ":",
-        "Θ", "θ", "?",
-        "ϴ", "ϑ", "?",  // Alternate form of theta (U+03f4, U+03d1)
-        "Ι", "ι", "i",
-        "Κ", "κ", "k",
-        "Κ", "ϰ", "k",  // Alternate form of lowercase kappa (U+03f0)
-        "Λ", "λ", "l",
-        "Μ", "μ", "m",
-        "Ν", "ν", "n",
-        "Ξ", "ξ", "x",
-        "Ο", "ο", "o",
-        "Π", "π", "p",
-        "Π", "ϖ", "p",  // Alternate form of lowercase pi (U+03d6)
-        "Ρ", "ρ", "r",
-        "Ρ", "ϱ", "r",  // Alternate form of lowercase rho (U+03f1)
-        "Σ", "σ", "s",
-        "Ϲ", "ϲ", "s",  // Alternate form of sigma (U+03f9, U+03f2)
-        "Τ", "τ", "t",
-        "Υ", "υ", "u",
-        "ϒ", "υ", "u",  // Alternate form of uppercase upsilon (U+03d2)
-        "Φ", "φ", "f",
-        "Φ", "ϕ", "f",  // Alternate form of lowercase phi (U+03d5)
-        "Χ", "χ", "&",
-        "Ψ", "ψ", "y",
-        "Ω", "ω", "w",
-
-        // List terminator
-        NULL
-    };
-    const char** greek;
-    int          is_cap;
-
-    // Check all known Greek identifiers 
-    for (greek = greek_letters;  *greek;  greek += 3)
+        // Start of new fount
+        const char*  next_fount;
+        mxml_node_t* y = get_next_element(x);
+        if (!is_xml_element(y, "mi"))  y = NULL;
+        next_fount = lookup_greek(style, y, NULL);
+        if (next_fount && strcmp(fount, next_fount) == 0)
+        {
+            // Start of multiple identifiers with same fount
+            if      (strcmp(fount, ".") == 0)  fount = "..";
+            else if (strcmp(fount, "_") == 0)  fount = ",_";
+        }
+    }
+    else
     {
-        if      (strcmp(name, greek[0]) == 0)  is_cap = 1;
-        else if (strcmp(name, greek[1]) == 0)  is_cap = 0;
-        else                                   continue;
-
-        // Found Greek identifier, translate now
-        if (is_cap)
+        // Same fount as previous one
+        switch (letter)
         {
-            if (style == STYLE_BOLD)  append_text(buf, "^_");
-            else                      append_text(buf, "_");
-        }
-        else
-        {
-            if (style == STYLE_BOLD)  append_text(buf, "@.");
-            else                      append_text(buf, ".");
-        }
-        append_text(buf, greek[2]);
+            case ':':
+                // 'η' should always have fount sign
+                mxmlElementDeleteAttr(x, "fount");
+                break;
 
-        // Report successful translation
-        return 1;
+            default:
+                fount = "";
+                break;
+        }
     }
 
-    // Report failed translation
-    return 0;
+    // Append translation
+    append_text(buf, fount);
+    append_char(buf, letter);
+    return 1;
 }
 
 
-/** @brief Translates string as symbolic identifier.
+/** @brief Translates <mi> containing symbolic identifier.
     @return     Non-zero value if translation was successful.
   */
 static int
-translate_as_symbolic_identifier(int style, StrBuf* buf, const char* name)
+translate_symbolic_identifier(int style, StrBuf* buf, mxml_node_t* x)
 {
+    const char* name = get_element_text(x);
     const char* symbols[] =
     {
         "?", "--",
@@ -858,8 +1041,8 @@ translate_mfrac(int style, StrBuf* buf, mxml_node_t* x)
     {
         const char* value = get_element_text(x);
         append_char(buf, '#');
-        translate_as_normal_digits(buf, get_element_text(num));
-        translate_as_lowered_digits(buf, get_element_text(denom));
+        translate_normal_digits(buf, get_element_text(num));
+        translate_lowered_digits(buf, get_element_text(denom));
         return;
     }
 
@@ -899,10 +1082,10 @@ translate_mroot(int style, StrBuf* buf, mxml_node_t* x)
     append_char(buf, '%');
 
     // Translate root index as subscript
-    translate_as_subscript(style, buf, index);
+    translate_subscript(style, buf, index);
 
     // Translate base
-    translate_as_base(style, buf, base);
+    translate_base(style, buf, base);
 }
 
 
@@ -932,7 +1115,7 @@ translate_msqrt(int style, StrBuf* buf, mxml_node_t* x)
     append_char(buf, '%');
 
     // Translate base
-    translate_as_base(style, buf, base);
+    translate_base(style, buf, base);
 }
 
 
@@ -948,11 +1131,11 @@ translate_msub_munder(int style, StrBuf* buf, mxml_node_t* x)
     if (!index)  return;
 
     // Translate base
-    translate_as_base(style, buf, base);
+    translate_base(style, buf, base);
 
     // Translate index as subscript
     if (is_numeric_mn(base))  append_char(buf, '*');       
-    translate_as_subscript(style, buf, index);
+    translate_subscript(style, buf, index);
 }
 
 
@@ -968,10 +1151,10 @@ translate_msup_mover(int style, StrBuf* buf, mxml_node_t* x)
     if (!index)  return;
 
     // Translate base
-    translate_as_base(style, buf, base);
+    translate_base(style, buf, base);
 
     // Translate index as superscript
-    translate_as_superscript(style, buf, index);
+    translate_superscript(style, buf, index);
 }
 
 
@@ -989,14 +1172,14 @@ translate_msubsup_munderover(int style, StrBuf* buf, mxml_node_t* x)
     if (!sup)  return;
 
     // Translate base
-    translate_as_base(style, buf, base);
+    translate_base(style, buf, base);
 
     // Translate subscript
     if (is_numeric_mn(base))  append_char(buf, '*');       
-    translate_as_subscript(style, buf, sub);
+    translate_subscript(style, buf, sub);
 
     // Translate superscript
-    translate_as_superscript(style, buf, sup);
+    translate_superscript(style, buf, sup);
 }
 
 
@@ -1053,23 +1236,23 @@ translate_mmultiscripts(int style, StrBuf* buf, mxml_node_t* x)
     append_char(buf, '<');
 
     // Translate pre-superscript
-    if (presup)  translate_as_superscript(style, buf, presup);
+    if (presup)  translate_superscript(style, buf, presup);
 
     // Translate pre-subscript
     if (presub)
     {
         if (is_numeric_mn(presub))  append_char(buf, '*');       
-        translate_as_subscript(style, buf, presub);
+        translate_subscript(style, buf, presub);
     }
 
     // Translate base
-    translate_as_base(style, buf, base);
+    translate_base(style, buf, base);
 
     // Translate post-subscript
-    if (postsub)  translate_as_subscript(style, buf, postsub);
+    if (postsub)  translate_subscript(style, buf, postsub);
 
     // Translate post-superscript
-    if (postsup)  translate_as_superscript(style, buf, postsup);
+    if (postsup)  translate_superscript(style, buf, postsup);
 
     // Enclose translation in brackets to clarify index ownership
     append_char(buf, '>');
@@ -1099,7 +1282,7 @@ translate_mtext(int style, StrBuf* buf, mxml_node_t* x)
         for (;  whitespace > 0;  --whitespace)  append_char(buf, ' ');
 
         // Translate actual string
-        translate_as_literal_text(buf, str);
+        translate_literal_text(buf, str);
     }
 
     // Append closing quote and trailing space
@@ -1122,10 +1305,10 @@ translate_mo(int style, StrBuf* buf, mxml_node_t* x)
     const char* name = get_element_text(x);
 
     // Attempt to translate as symbolic operator
-    if (translate_as_symbolic_operator(style, buf, name))  return;
+    if (translate_symbolic_operator(style, buf, name))  return;
 
     // Attempt to translate as word operator
-    if (translate_as_word_operator(style, buf, name))  return;
+    if (translate_word_operator(style, buf, name))  return;
 }
 
 
@@ -1136,13 +1319,13 @@ translate_mi(int style, StrBuf* buf, mxml_node_t* x)
     const char* name = get_element_text(x);
 
     // Attempt to translate as Latin identifier
-    if (translate_as_latin_identifier(style, buf, name))  return;
+    if (translate_latin_identifier(style, buf, x))  return;
 
     // Attempt to translate as Greek identifier
-    if (translate_as_greek_identifier(style, buf, name))  return;
+    if (translate_greek_identifier(style, buf, x))  return;
 
     // Attempt to translate as symbolic identifier
-    if (translate_as_symbolic_identifier(style, buf, name))  return;
+    if (translate_symbolic_identifier(style, buf, x))  return;
 }
 
 
@@ -1152,7 +1335,7 @@ translate_mn(int style, StrBuf* buf, mxml_node_t* x)
 {
     const char* value = get_element_text(x);
     append_char(buf, '#');
-    translate_as_normal_digits(buf, value);
+    translate_normal_digits(buf, value);
 }
 
 

@@ -133,6 +133,12 @@ mxml_node_t* get_first_element(mxml_node_t* x);
   */
 mxml_node_t* get_last_element(mxml_node_t* x);
 
+/** @brief Gets the prev sibling element.
+    @return     Pointer to previous sibling element.  @p NULL if there is none.
+    @param x    Pointer to a DOM element.
+  */
+mxml_node_t* get_prev_element(mxml_node_t* x);
+
 /** @brief Gets the next sibling element.
     @return     Pointer to next sibling element.  @p NULL if there is none.
     @param x    Pointer to a DOM element.

@@ -37,6 +37,15 @@ get_last_element(mxml_node_t* x)
 
 
 mxml_node_t*
+get_prev_element(mxml_node_t* x)
+{
+    for (x = mxmlGetPrevSibling(x);  x;  x = mxmlGetPrevSibling(x))
+        if (mxmlGetElement(x))  break;
+    return x;
+}
+
+
+mxml_node_t*
 get_next_element(mxml_node_t* x)
 {
     for (x = mxmlGetNextSibling(x);  x;  x = mxmlGetNextSibling(x))
