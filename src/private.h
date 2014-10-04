@@ -41,8 +41,9 @@ char* brl2mml_from_ukmaths(const char*, int*);
 /// @brief Resizable string buffer
 typedef struct
 {
-    char*       mpStr;          ///< NULL-terminated string data
-    size_t      mCapacity;      ///< Longest string that can be stored
+    char*  mpStr;       ///< NULL-terminated string data
+    size_t mCapacity;   ///< Longest string that can be stored
+    void*  mpPriv;      ///< Private data
 } StrBuf;
 
 
@@ -125,13 +126,13 @@ int starts_with(const char* str, size_t len, const char* text);
     @return     Pointer to first child element.  @p NULL if there is none.
     @param x    Pointer to a DOM element.
   */
-mxml_node_t* get_first_element(mxml_node_t* x);
+mxml_node_t* first_child_elem(mxml_node_t* x);
 
 /** @brief Gets the last child element.
     @return     Pointer to last child element.  @p NULL if there is none.
     @param x    Pointer to a DOM element.
   */
-mxml_node_t* get_last_element(mxml_node_t* x);
+mxml_node_t* last_child_elem(mxml_node_t* x);
 
 /** @brief Gets the prev sibling element.
     @return     Pointer to previous sibling element.  @p NULL if there is none.

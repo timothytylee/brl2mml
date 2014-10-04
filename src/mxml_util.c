@@ -19,7 +19,7 @@
 
 
 mxml_node_t*
-get_first_element(mxml_node_t* x)
+first_child_elem(mxml_node_t* x)
 {
     for (x = mxmlGetFirstChild(x);  x;  x = mxmlGetNextSibling(x))
         if (mxmlGetElement(x))  break;
@@ -28,7 +28,7 @@ get_first_element(mxml_node_t* x)
 
 
 mxml_node_t*
-get_last_element(mxml_node_t* x)
+last_child_elem(mxml_node_t* x)
 {
     for (x = mxmlGetLastChild(x);  x;  x = mxmlGetPrevSibling(x))
         if (mxmlGetElement(x))  break;
@@ -84,7 +84,7 @@ bypass_style_and_indices(mxml_node_t* x)
             (strcmp(name, "munderover") == 0) ||
             (strcmp(name, "mmultiscripts") == 0))
     {
-        x = get_first_element(x);
+        x = first_child_elem(x);
         if (!x)  return NULL;
         name = mxmlGetElement(x);
     }
@@ -112,9 +112,9 @@ group_siblings(const char* name, mxml_node_t* first, mxml_node_t* last)
 mxml_node_t*
 simplify_single_child_mrow(mxml_node_t* mrow)
 {
-    if (get_first_element(mrow) == get_last_element(mrow))
+    if (first_child_elem(mrow) == last_child_elem(mrow))
     {
-        mxml_node_t* child = get_first_element(mrow);
+        mxml_node_t* child = first_child_elem(mrow);
         mxmlAdd(mxmlGetParent(mrow), MXML_ADD_BEFORE, mrow, child);
         mxmlDelete(mrow);
         mrow = child;

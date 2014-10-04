@@ -45,8 +45,9 @@ create_buffer()
 
     // Initialize with a NULL-terminated empty string
     buf->mpStr     = malloc(MINIMUM_GROWTH + 1);
+    buf->mpStr[0]  = '\0';
     buf->mCapacity = MINIMUM_GROWTH;
-    buf->mpStr[0] = '\0';
+    buf->mpPriv    = NULL;
     return buf;
 }
 

@@ -27,6 +27,7 @@
 #define UTF8_DOT_OPERATOR               "⋅" // U+22c5
 
 
+/// @brief MathML style
 enum
 {
     STYLE_NORMAL = 0,
@@ -35,9 +36,18 @@ enum
     STYLE_FRAKTUR,
 };
 
+/// @brief StrBuf content identifier
+enum
+{
+    END_WITH_OTHER = 0,
+    END_WITH_MTEXT,
+    END_WITH_WORD_MO,
+    END_WITH_NUM_MN,
+};
+
 
 /// Forward declare translate_math_node() for recursive invocation
-static void
+static long
 translate_math_node(int style, StrBuf* buf, mxml_node_t* x);
 
 
@@ -52,6 +62,31 @@ has_trailing_space(StrBuf* buf)
 
     // Otherwise check for trailing space
     return (strchr(" <", buf->mpStr[len - 1]) != NULL);
+}
+
+
+/// @brief Appends text with optional Latin fount in between if necessary
+static void
+append_text_with_fount(StrBuf* buf, const char* text)
+{
+    char c = text[0];
+    if ((c >= 'a') && (c <= 'z'))
+    {
+        // New text starts with Latin character
+        size_t len = strlen(buf->mpStr);
+
+        // If buffer ends in alpha character, add fount to avoid confusion
+        if (len > 0)
+        {
+            char c = buf->mpStr[len - 1];
+            if ((buf->mpPriv != END_WITH_OTHER) ||
+                    (c == '_') || ((c >= 'a') && (c <= 'z')))
+                append_char(buf, ';');
+        }
+    }
+
+    // Append new text now
+    append_text(buf, text);
 }
 
 
@@ -103,6 +138,87 @@ is_numeric_mn(mxml_node_t* x)
     }
 
     // All characters are digits
+    return 1;
+}
+
+
+static const char* overheads[] =
+{
+    "¯",   ":",
+    "ˆ",   "@:",
+    "ˇ",   "@>",
+    "~",   "^:",
+    "···", "-'",
+    "··",  "-",
+    "·",   "'",
+    "∗",   "@5",
+    "∗∗",  "@55",
+    "∗∗∗", "@555",
+
+    // List terminator
+    NULL
+};
+
+/// @brief Checks whether an element is a simple overhead <mo> node
+static int
+is_overhead_mo(mxml_node_t* x)
+{
+    const char*  text;
+    const char** oh;
+
+    // Check for <mo> element
+    if (!is_xml_element(x, "mo"))  return 0;
+
+    // Check all known overhead symbols 
+    text = get_element_text(x);
+    for (oh = overheads;  *oh;  oh += 2)
+        if (strcmp(text, oh[0]) == 0)  return 1;
+    return 0;
+}
+
+
+/// @brief Checks whether a node contains a simple maths term
+static int
+is_simple_term(mxml_node_t* x)
+{
+    while (x)
+    {
+        // <mfenced> are simple
+        if (is_xml_element(x, "mfenced"))  return 1;
+
+        // <msub> or <msup> with simple base and numeric index are simple
+        if (is_xml_element(x, "msub") || is_xml_element(x, "msup"))
+        {
+            x = first_child_elem(x);
+            if (is_simple_term(x))
+            {
+                x = get_next_element(x);
+                if (is_numeric_mn(x))  return 1;
+            }
+            return 0;
+        }
+
+        // <munder> or <mover> with simple base and overhead symbol are simple
+        if (is_xml_element(x, "mover") || is_xml_element(x, "munder"))
+        {
+            x = first_child_elem(x);
+            if (is_simple_term(x))
+            {
+                x = get_next_element(x);
+                if (is_overhead_mo(x))  return 1;
+            }
+            return 0;
+        }
+
+        // Check child node
+        x = first_child_elem(x);
+        if (!x)  break;
+
+        // Not simple if there is a sibling element
+        if (get_next_element(x))  return 0;
+    }
+
+    // All nodes are single element
     return 1;
 }
 
@@ -340,61 +456,72 @@ lookup_greek(int style, mxml_node_t* x, char* letter)
 
 
 /** @brief Obtains fount for previous element.
-    @return     @p NULL if previous element is not an identifier.
+    @return     @p NULL if previous element does not have a fount.
   */
 static const char*
-get_prev_fount(mxml_node_t* x)
+get_previous_fount(mxml_node_t* x)
 {
     const char*  attr = NULL;
     mxml_node_t* prev = get_prev_element(x);
     if (prev)  attr = mxmlElementGetAttr(prev, "fount");
-    if (!attr)  attr = "";
     return attr;
 }
 
 
-/// @brief Translates child nodes
+/// @brief Clears fount sign stored in previous element.
 static void
+clear_previous_fount(mxml_node_t* x)
+{
+    mxml_node_t* prev = get_prev_element(x);
+    if (prev)  mxmlElementDeleteAttr(prev, "fount");
+}
+
+
+/// @brief Translates child nodes
+static long
 translate_children(int style, StrBuf* buf, mxml_node_t* x)
 {
     StrBuf* tmp_buf = create_buffer();
+    long    end_with = END_WITH_OTHER;
 
     // Translate each of the child node
-    for (x = get_first_element(x);  x;  x = get_next_element(x))
-        translate_math_node(style, tmp_buf, x);
+    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+        end_with = translate_math_node(style, tmp_buf, x);
 
     // Append translated content to buffer
     strip_trailing_space(tmp_buf);
-    append_text(buf, tmp_buf->mpStr);
+    append_text_with_fount(buf, tmp_buf->mpStr);
     destroy_buffer(tmp_buf);
+    return end_with;
 }
 
 
 /// @brief Translates node as a base
-static void
+static long
 translate_base(int style, StrBuf* buf, mxml_node_t* x)
 {
     // Translate node into temporary buffer
     StrBuf* tmp_buf = create_buffer();
-    translate_math_node(style, tmp_buf, x);
+    long    end_with;
+    clear_previous_fount(x);
+    end_with = translate_math_node(style, tmp_buf, x);
     strip_trailing_space(tmp_buf);
 
     // Prevent arrow from being mis-interpreted as numeric index
     if (tmp_buf->mpStr[0] == '3')  prepend_char(tmp_buf, '@');
 
     // Surround complex expression with bracket
-    if (!is_xml_element(x, "mn") &&
-            !is_xml_element(x, "mi") &&
-            !is_xml_element(x, "mo") &&
-            !is_xml_element(x, "mfenced"))
+    if (!is_simple_term(x))
     {
         prepend_char(tmp_buf, '<');
         append_char(tmp_buf, '>');
+        end_with = END_WITH_OTHER;
     }
 
     // Append translated content to buffer
-    append_text(buf, tmp_buf->mpStr);
+    append_text_with_fount(buf, tmp_buf->mpStr);
     destroy_buffer(tmp_buf);
+    return end_with;
 }
 
 
@@ -402,20 +529,6 @@ translate_base(int style, StrBuf* buf, mxml_node_t* x)
 static int
 translate_overhead_symbol(int style, StrBuf* buf, mxml_node_t* x)
 {
-    const char* overheads[] =
-    {
-        "¯",   ":",     // Dot 156
-        "ˆ",   "@:",    // Dot 4-156
-        "ˇ",   "@>",    // Dot 4-345
-        "~",   "^:",    // Dot 45-156
-        "···", "-'",    // Dot 36-3
-        "··",  "-",     // Dot 36
-        "·",   "'",     // Dot 3
-
-        // List terminator
-        NULL
-    };
-
     const char*  text;
     const char** oh;
 
@@ -526,7 +639,6 @@ translate_symbolic_operator(int style, StrBuf* buf, const char* name)
         {"′", "@9",   0, 0},
         {"″", "@99",  0, 0},
         {"‴", "@999", 0, 0},
-        {"∗", "@5",   0, 0},
 
         // Escaped punctuations without space padding
         {")", ",7",   0, 0},
@@ -812,8 +924,8 @@ translate_latin_identifier(int style, StrBuf* buf, mxml_node_t* x)
     mxmlElementSetAttr(x, "fount", fount);
 
     // Handle consecutive sequence
-    prev_fount = get_prev_fount(x);
-    if (strcmp(prev_fount, fount) != 0)
+    prev_fount = get_previous_fount(x);
+    if (!prev_fount || (strcmp(prev_fount, fount) != 0))
     {
         // Start of new fount
         const char*  next_fount;
@@ -827,6 +939,27 @@ translate_latin_identifier(int style, StrBuf* buf, mxml_node_t* x)
             else if (strcmp(fount, "@") == 0)  fount = "@@";
             else if (strcmp(fount, "^") == 0)  fount = "^^";
         }
+
+        // Drop lowercase fount if possible
+        while (strcmp(fount, ";") == 0)
+        {
+            mxml_node_t* prev;
+            size_t       len;
+            char         last = '\0';
+
+            // Retain fount for 'o' to distinguish from right bracket
+            if (letter == 'o')  break;
+
+            // Retain fount if confusion may arise
+            if (buf->mpPriv != END_WITH_OTHER)  break;
+
+            // Retain fount if previous fount is different
+            if (prev_fount)  break;
+
+            // Drop redundant fount
+            fount = NULL;
+            break;
+        }
     }
     else
     {
@@ -839,14 +972,26 @@ translate_latin_identifier(int style, StrBuf* buf, mxml_node_t* x)
                 break;
 
             default:
-                fount = "";
+                fount = NULL;
                 break;
         }
     }
 
     // Append translation
-    append_text(buf, fount);
-    append_char(buf, letter);
+    if (fount)
+    {
+        append_text(buf, fount);
+        append_char(buf, letter);
+    }
+    else if (prev_fount)
+    {
+        append_char(buf, letter);
+    }
+    else
+    {
+        char text[2] = {letter, '\0'};
+        append_text_with_fount(buf, text);
+    }
     return 1;
 }
 
@@ -866,8 +1011,8 @@ translate_greek_identifier(int style, StrBuf* buf, mxml_node_t* x)
     mxmlElementSetAttr(x, "fount", fount);
 
     // Handle consecutive sequence
-    prev_fount = get_prev_fount(x);
-    if (strcmp(prev_fount, fount) != 0)
+    prev_fount = get_previous_fount(x);
+    if (!prev_fount || (strcmp(prev_fount, fount) != 0))
     {
         // Start of new fount
         const char*  next_fount;
@@ -946,58 +1091,63 @@ translate_symbolic_identifier(int style, StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <math> node
-static void
+static long
 translate_math(int style, StrBuf* buf, mxml_node_t* x)
 {
-    translate_children(style, buf, x);
+    return translate_children(style, buf, x);
 }
 
 
 /// @brief Translates <mstyle> node
-static void
+static long
 translate_mstyle(int style, StrBuf* buf, mxml_node_t* x)
 {
-    translate_children(style, buf, x);
+    return translate_children(style, buf, x);
 }
 
 
 /// @brief Translates <menclose> node
-static void
+static long
 translate_menclose(int style, StrBuf* buf, mxml_node_t* x)
 {
     const char* notation = mxmlElementGetAttr(x, "notation");
+    int         simple = is_simple_term(x);
 
     // Dot 5 strikes out the next term
     if (strcmp(notation, "updiagonalstrike") == 0)
         append_char(buf, '"');
 
-    // Translate a single term
-    translate_math_node(style, buf, get_first_element(x));
+    // Translate enclosed items
+    if (!simple)  append_char(buf, '<');
+    translate_children(style, buf, x);
+    if (!simple)  append_char(buf, '>');
 
     // Dot 4-1456 encloses previous term in annuity symbol
     if (strcmp(notation, "actuarial") == 0)
         append_text(buf, "@?");
+    return END_WITH_OTHER;
 }
 
 
 /// @brief Translates <mtable> node
-static void
+static long
 translate_mtable(int style, StrBuf* buf, mxml_node_t* x)
 {
     // TODO: Implement it
+    return END_WITH_OTHER;
 }
 
 
 /// @brief Translates <mrow> node
-static void
+static long
 translate_mrow(int style, StrBuf* buf, mxml_node_t* x)
 {
-    translate_children(style, buf, x);
+    return translate_children(style, buf, x);
 }
 
 
 /// @brief Translates <mfenced> node
-static void
+static long
 translate_mfenced(int style, StrBuf* buf, mxml_node_t* x)
 {
     const char* open_attr = mxmlElementGetAttr(x, "open");
@@ -1022,19 +1172,21 @@ translate_mfenced(int style, StrBuf* buf, mxml_node_t* x)
     else if (strcmp(close_attr, "[" ) == 0)  append_text(buf, "(");
     else if (strcmp(close_attr, "}" ) == 0)  append_text(buf, "o");
     else if (strcmp(close_attr, "〉") == 0)  append_text(buf, ".)");
+    return END_WITH_OTHER;
 }
 
 
 /// @brief Translates <mfrac> node
-static void
+static long
 translate_mfrac(int style, StrBuf* buf, mxml_node_t* x)
 {
-    mxml_node_t* num = get_first_element(x);
+    mxml_node_t* num = first_child_elem(x);
     mxml_node_t* denom = num ? get_next_element(num) : NULL;
+    int          simple;
 
     // Make sure the required child elements are present
-    if (!num)  return;
-    if (!denom)  return;
+    if (!num)  return END_WITH_OTHER;
+    if (!denom)  return END_WITH_OTHER;
 
     // Convert simple fraction
     if (is_numeric_mn(num) && is_numeric_mn(denom))
@@ -1043,40 +1195,43 @@ translate_mfrac(int style, StrBuf* buf, mxml_node_t* x)
         append_char(buf, '#');
         translate_normal_digits(buf, get_element_text(num));
         translate_lowered_digits(buf, get_element_text(denom));
-        return;
+        return END_WITH_OTHER;
     }
 
     // Enclose the fraction in bracket
     append_char(buf, '<');
 
     // Enclose numerator in brackets
-    append_char(buf, '<');
+    simple = is_simple_term(num);
+    if (!simple)  append_char(buf, '<');
     translate_math_node(style, buf, num);
-    append_char(buf, '>');
+    if (!simple)  append_char(buf, '>');
 
     // Dot 456-34 is fraction line
     append_text(buf, "_/");
 
     // Enclose denominator in brackets
-    append_char(buf, '<');
+    simple = is_simple_term(denom);
+    if (!simple)  append_char(buf, '<');
     translate_math_node(style, buf, denom);
-    append_char(buf, '>');
+    if (!simple)  append_char(buf, '>');
 
     // Enclose the fraction in bracket
     append_char(buf, '>');
+    return END_WITH_OTHER;
 }
 
 
 /// @brief Translates <mroot> node
-static void
+static long
 translate_mroot(int style, StrBuf* buf, mxml_node_t* x)
 {
-    mxml_node_t* base = get_first_element(x);
+    mxml_node_t* base = first_child_elem(x);
     mxml_node_t* index = base ? get_next_element(base) : NULL;
 
     // Make sure the required child elements are present
-    if (!base)  return;
-    if (!index)  return;
+    if (!base)  return END_WITH_OTHER;
+    if (!index)  return END_WITH_OTHER;
 
     // Dot 145 starts root
     append_char(buf, '%');
@@ -1085,19 +1240,19 @@ translate_mroot(int style, StrBuf* buf, mxml_node_t* x)
     translate_subscript(style, buf, index);
 
     // Translate base
-    translate_base(style, buf, base);
+    return translate_base(style, buf, base);
 }
 
 
 /// @brief Translates <msqrt> node
-static void
+static long
 translate_msqrt(int style, StrBuf* buf, mxml_node_t* x)
 {
-    mxml_node_t* base = get_first_element(x);
+    mxml_node_t* base = first_child_elem(x);
     mxml_node_t* next = base ? get_next_element(base) : NULL;
 
     // Make sure there is at least one child element
-    if (!base)  return;
+    if (!base)  return END_WITH_OTHER;
 
     // Group multiple child elements inside <mrow>
     if (next)
@@ -1115,20 +1270,20 @@ translate_msqrt(int style, StrBuf* buf, mxml_node_t* x)
     append_char(buf, '%');
 
     // Translate base
-    translate_base(style, buf, base);
+    return translate_base(style, buf, base);
 }
 
 
 /// @brief Translates <msub> or <munder> node
-static void
+static long
 translate_msub_munder(int style, StrBuf* buf, mxml_node_t* x)
 {
-    mxml_node_t* base = get_first_element(x);
+    mxml_node_t* base = first_child_elem(x);
     mxml_node_t* index = base ? get_next_element(base) : NULL;
 
     // Make sure the required child elements are present
-    if (!base)  return;
-    if (!index)  return;
+    if (!base)  return END_WITH_OTHER;
+    if (!index)  return END_WITH_OTHER;
 
     // Translate base
     translate_base(style, buf, base);
@@ -1136,40 +1291,42 @@ translate_msub_munder(int style, StrBuf* buf, mxml_node_t* x)
     // Translate index as subscript
     if (is_numeric_mn(base))  append_char(buf, '*');       
     translate_subscript(style, buf, index);
+    return END_WITH_OTHER;
 }
 
 
 /// @brief Translates <msup> or <mover> node
-static void
+static long
 translate_msup_mover(int style, StrBuf* buf, mxml_node_t* x)
 {
-    mxml_node_t* base = get_first_element(x);
+    mxml_node_t* base = first_child_elem(x);
     mxml_node_t* index = base ? get_next_element(base) : NULL;
 
     // Make sure the required child elements are present
-    if (!base)  return;
-    if (!index)  return;
+    if (!base)  return END_WITH_OTHER;
+    if (!index)  return END_WITH_OTHER;
 
     // Translate base
     translate_base(style, buf, base);
 
     // Translate index as superscript
     translate_superscript(style, buf, index);
+    return END_WITH_OTHER;
 }
 
 
 /// @brief Translates <msubsup> or <munderover> node
-static void
+static long
 translate_msubsup_munderover(int style, StrBuf* buf, mxml_node_t* x)
 {
-    mxml_node_t* base = get_first_element(x);
+    mxml_node_t* base = first_child_elem(x);
     mxml_node_t* sub = base ? get_next_element(base) : NULL;
     mxml_node_t* sup = sub ? get_next_element(sub) : NULL;
 
     // Make sure the required child elements are present
-    if (!base)  return;
-    if (!sub)  return;
-    if (!sup)  return;
+    if (!base)  return END_WITH_OTHER;
+    if (!sub)  return END_WITH_OTHER;
+    if (!sup)  return END_WITH_OTHER;
 
     // Translate base
     translate_base(style, buf, base);
@@ -1180,6 +1337,7 @@ translate_msubsup_munderover(int style, StrBuf* buf, mxml_node_t* x)
 
     // Translate superscript
     translate_superscript(style, buf, sup);
+    return END_WITH_OTHER;
 }
 
 
@@ -1195,36 +1353,36 @@ is_none_element(mxml_node_t* x)
 
 
 /// @brief Translates <mmultiscripts> node
-static void
+static long
 translate_mmultiscripts(int style, StrBuf* buf, mxml_node_t* x)
 {
-    mxml_node_t* base = get_first_element(x);
+    mxml_node_t* base = first_child_elem(x);
     mxml_node_t* pre = NULL;
     mxml_node_t* postsub = NULL;
     mxml_node_t* postsup = NULL;
     mxml_node_t* presub = NULL;
     mxml_node_t* presup = NULL;
 
-    if (!base)  return;
+    if (!base)  return END_WITH_OTHER;
     pre = mxmlGetNextSibling(base);
     if (!is_xml_element(pre, "mprescripts"))
     {
         postsub = pre;
-        if (!postsub)  return;
+        if (!postsub)  return END_WITH_OTHER;
         postsup = mxmlGetNextSibling(postsub);
-        if (!postsup)  return;
+        if (!postsup)  return END_WITH_OTHER;
         pre = mxmlGetNextSibling(postsup);
     }
     if (is_xml_element(pre, "mprescripts"))
     {
         presub = mxmlGetNextSibling(pre);
-        if (!presub)  return;
+        if (!presub)  return END_WITH_OTHER;
         presup = mxmlGetNextSibling(presub);
-        if (!presup)  return;
+        if (!presup)  return END_WITH_OTHER;
     }
 
     // Make sure the required child elements are present
-    if (!postsub && !presub)  return;
+    if (!postsub && !presub)  return END_WITH_OTHER;
 
     // Treat <none> indices as non-existent
     if (is_xml_element(presub,  "none"))  presub = NULL;
@@ -1256,11 +1414,12 @@ translate_mmultiscripts(int style, StrBuf* buf, mxml_node_t* x)
 
     // Enclose translation in brackets to clarify index ownership
     append_char(buf, '>');
+    return END_WITH_OTHER;
 }
 
 
 /// @brief Translates <mtext> node
-static void
+static long
 translate_mtext(int style, StrBuf* buf, mxml_node_t* x)
 {
     const char* str;
@@ -1287,55 +1446,65 @@ translate_mtext(int style, StrBuf* buf, mxml_node_t* x)
 
     // Append closing quote and trailing space
     append_text(buf, "0 ");
+
+    // Remember ending
+    return END_WITH_MTEXT;
 }
 
 
 /// @brief Translates <mspace> node
-static void
+static long
 translate_mspace(int style, StrBuf* buf, mxml_node_t* x)
 {
     // Ignore <mspace>
+    return (long)buf->mpPriv;
 }
 
 
 /// @brief Translates <mo> node
-static void
+static long
 translate_mo(int style, StrBuf* buf, mxml_node_t* x)
 {
     const char* name = get_element_text(x);
 
     // Attempt to translate as symbolic operator
-    if (translate_symbolic_operator(style, buf, name))  return;
+    if (translate_symbolic_operator(style, buf, name))
+        return END_WITH_OTHER;
 
     // Attempt to translate as word operator
-    if (translate_word_operator(style, buf, name))  return;
+    if (translate_word_operator(style, buf, name))
+        return END_WITH_WORD_MO;
 }
 
 
 /// @brief Translates <mi> node
-static void
+static long
 translate_mi(int style, StrBuf* buf, mxml_node_t* x)
 {
     const char* name = get_element_text(x);
 
     // Attempt to translate as Latin identifier
-    if (translate_latin_identifier(style, buf, x))  return;
+    if (translate_latin_identifier(style, buf, x))
+        return END_WITH_OTHER;
 
     // Attempt to translate as Greek identifier
-    if (translate_greek_identifier(style, buf, x))  return;
+    if (translate_greek_identifier(style, buf, x))
+        return END_WITH_OTHER;
 
     // Attempt to translate as symbolic identifier
-    if (translate_symbolic_identifier(style, buf, x))  return;
+    if (translate_symbolic_identifier(style, buf, x))
+        return END_WITH_OTHER;
 }
 
 
 /// @brief Translates <mn> node
-static void
+static long
 translate_mn(int style, StrBuf* buf, mxml_node_t* x)
 {
     const char* value = get_element_text(x);
     append_char(buf, '#');
     translate_normal_digits(buf, value);
+    return END_WITH_NUM_MN;
 }
 
 
@@ -1343,12 +1512,12 @@ translate_mn(int style, StrBuf* buf, mxml_node_t* x)
 typedef struct
 {
     const char* mpTag;
-    void(*mpHandler)(int, StrBuf*, mxml_node_t*);
+    long(*mpHandler)(int, StrBuf*, mxml_node_t*);
 } HandlerRec;
 
 
 /// @brief Translates a MathML element
-static void
+static long
 translate_math_node(int style, StrBuf* buf, mxml_node_t* x)
 {
     const HandlerRec handlers[] =
@@ -1394,9 +1563,11 @@ translate_math_node(int style, StrBuf* buf, mxml_node_t* x)
     // Check all known handlers
     for (rec = handlers;  rec->mpTag;  ++rec)
     {
+        long end_with;
         if (strcmp(name, rec->mpTag) != 0)  continue;
-        rec->mpHandler(style, buf, x);
-        return;
+        end_with = rec->mpHandler(style, buf, x);
+        buf->mpPriv = (void*)end_with;
+        return end_with;
     }
 }
 
@@ -1413,7 +1584,7 @@ brl2mml_to_ukmaths(const char* mml, int* used)
     mxmlLoadString(x, mml, MXML_NO_CALLBACK);
 
     // Translate parsed elements
-    for (elem = get_first_element(x);  elem;  elem = get_next_element(elem))
+    for (elem = first_child_elem(x);  elem;  elem = get_next_element(elem))
         translate_math_node(STYLE_NORMAL, buf, elem);
 
     // Clean up
