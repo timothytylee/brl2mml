@@ -1181,33 +1181,33 @@ parse_word_operator(mxml_node_t* x, const char* brl, size_t len)
     {
         // Trigonometric functions
         "s",    "sin",
-        "@s",   "sin -1",
+        "@s",   "arcsin",
         "c",    "cos",
-        "@c",   "cos -1",
+        "@c",   "arccos",
         "t",    "tan",
-        "@t",   "tan -1",
+        "@t",   "arctan",
         "-",    "sec",
-        "@-",   "sec -1",
+        "@-",   "arcsec",
         "<",    "cosec",
-        "@<",   "cosec -1",
+        "@<",   "arccosec",
         "\\",   "cot",
-        "@\\",  "cot -1",
+        "@\\",  "arccot",
         "hs",   "sinh",
-        "8s",   "sinh -1",
+        "8s",   "arcsinh",
         "hc",   "cosh",
-        "8c",   "cosh -1",
+        "8c",   "arccosh",
         "ht",   "tanh",
-        "8t",   "tanh -1",
+        "8t",   "arctanh",
         "h-",   "sech",
-        "8-",   "sech -1",
+        "8-",   "arcsech",
         "h<",   "cosech",
-        "8<",   "cosech -1",
+        "8<",   "arccosech",
         "h\\",  "coth",
-        "8\\",  "coth -1",
+        "8\\",  "arccoth",
 
         // Other functions
         "l",    "log",
-        "@l",   "log -1",
+        "@l",   "antilog",
         "^l",   "colog",
         "g",    "grad",
         "%",    "curl",
@@ -1323,24 +1323,9 @@ parse_word_operator(mxml_node_t* x, const char* brl, size_t len)
             int          op_len = strlen(buf->mpStr);
             int          inv = 0;
 
-            // Check for inverse operator with " -1" suffix
-            if ((op_len > 3) && (strcmp(buf->mpStr + op_len - 3, " -1") == 0))
-            {
-                inv = 1;
-                buf->mpStr[op_len - 3] = '\0';
-            }
-
             // Create <mo> node
             mo = mxmlNewElement(x, "mo");
             mxmlNewText(mo, 0, buf->mpStr);
-            
-            // Add -1 superscript for inverse operator
-            if (inv)
-            {
-                mxml_node_t* mn = mxmlNewElement(x, "mn");
-                mxmlNewText(mn, 0, "-1");
-                group_siblings("msup", mo, mn);
-            }
         }
 
         // Stop when there is no more braille to parse
