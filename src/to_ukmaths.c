@@ -26,6 +26,9 @@
 #define UTF8_MIDDLE_DOT                 "·" // U+00b7
 #define UTF8_DOT_OPERATOR               "⋅" // U+22c5
 
+#define NOT_IDENTIFIER                  0
+#define IS_IDENTIFIER                   1
+
 
 /// @brief MathML style
 enum
@@ -43,6 +46,8 @@ enum
     END_WITH_MTEXT,
     END_WITH_WORD_MO,
     END_WITH_NUM_MN,
+    END_WITH_UNIT_MI,
+    END_WITH_LOWERED_DIGIT,
 };
 
 
@@ -62,6 +67,15 @@ has_trailing_space(StrBuf* buf)
 
     // Otherwise check for trailing space
     return (strchr(" <", buf->mpStr[len - 1]) != NULL);
+}
+
+
+/// @brief Encloses standalone <mi> in <mrow> to ensure correct translation
+static mxml_node_t*
+group_standalone_mi(mxml_node_t* x)
+{
+    if (is_xml_element(x, "mi"))  x = group_siblings("mrow", x, x);
+    return x;
 }
 
 
@@ -324,24 +338,19 @@ strip_trailing_space(StrBuf* buf)
     @return     @p NULL if the node is not a Latin identifier.
     @return     The fount that preceeds the translated letter.
     @param style    Math style.
-    @param x        The <mi> node to translate.
+    @param name     NULL-terminated name of identifier.
     @param letter   The translated letter.
   */
 static const char*
-lookup_latin(int style, mxml_node_t* x, char* letter)
+lookup_latin(int style, const char* name, char* letter)
 {
-    const char* name;
-    char        c;
+    char c;
 
-    // Ignore NULL nodes
-    if (!x)  return 0;
-
-    // Latin identifiers contain only one character
-    name = get_element_text(x);
-    if (strlen(name) != 1)  return 0;
+    // Ignore NULL names
+    if (!name)  return 0;
+    c = name[0];
 
     // Lowercase Latin identifiers are translated as is
-    c = name[0];
     if ((c >= 'a') && (c <= 'z'))
     {
         if (letter)  *letter = c;
@@ -372,11 +381,11 @@ lookup_latin(int style, mxml_node_t* x, char* letter)
     @return     @p NULL if the node is not a Greek identifier.
     @return     The fount that preceeds the translated letter.
     @param style    Math style.
-    @param x        The <mi> node to translate.
+    @param name     NULL-terminated name of identifier.
     @param letter   The translated letter.
   */
 static const char*
-lookup_greek(int style, mxml_node_t* x, char* letter)
+lookup_greek(int style, const char* name, char* letter)
 {
     const char* greek_letters[] =
     {
@@ -416,19 +425,18 @@ lookup_greek(int style, mxml_node_t* x, char* letter)
         // List terminator
         NULL
     };
-
-    const char*  name;
     const char** greek;
+    size_t       len;
 
-    // Ignore NULL nodes
-    if (!x)  return 0;
+    // Ignore NULL names
+    if (!name)  return 0;
+    len = strlen(name);
 
     // Check all known Greek identifiers 
-    name = get_element_text(x);
     for (greek = greek_letters;  *greek;  greek += 3)
     {
         // Test for uppercase identifier
-        if (strcmp(name, greek[0]) == 0)
+        if (starts_with(name, len, greek[0]))
         {
             if (letter)  *letter = greek[2][0];
             switch (style)
@@ -439,7 +447,7 @@ lookup_greek(int style, mxml_node_t* x, char* letter)
         }
 
         // Test for lowercase identifier
-        if (strcmp(name, greek[1]) == 0)
+        if (starts_with(name, len, greek[1]))
         {
             if (letter)  *letter = greek[2][0];
             switch (style)
@@ -455,34 +463,22 @@ lookup_greek(int style, mxml_node_t* x, char* letter)
 }
 
 
-/** @brief Obtains fount for previous element.
-    @return     @p NULL if previous element does not have a fount.
-  */
-static const char*
-get_previous_fount(mxml_node_t* x)
-{
-    const char*  attr = NULL;
-    mxml_node_t* prev = get_prev_element(x);
-    if (prev)  attr = mxmlElementGetAttr(prev, "fount");
-    return attr;
-}
-
-
-/// @brief Clears fount sign stored in previous element.
-static void
-clear_previous_fount(mxml_node_t* x)
-{
-    mxml_node_t* prev = get_prev_element(x);
-    if (prev)  mxmlElementDeleteAttr(prev, "fount");
-}
-
-
 /// @brief Translates child nodes
 static long
 translate_children(int style, StrBuf* buf, mxml_node_t* x)
 {
     StrBuf* tmp_buf = create_buffer();
     long    end_with = END_WITH_OTHER;
+
+    // Remove <mspace> and <mphantom> nodes
+    mxml_node_t* el = first_child_elem(x);
+    while (el)
+    {
+        mxml_node_t* next = get_next_element(el);
+        if (is_xml_element(el, "mspace") || is_xml_element(el, "mphantom"))
+            mxmlDelete(el);
+        el = next;
+    }
 
     // Translate each of the child node
     for (x = first_child_elem(x);  x;  x = get_next_element(x))
@@ -500,10 +496,12 @@ translate_children(int style, StrBuf* buf, mxml_node_t* x)
 static long
 translate_base(int style, StrBuf* buf, mxml_node_t* x)
 {
+    // Protect standalone <mi>
+    x = group_standalone_mi(x);
+
     // Translate node into temporary buffer
     StrBuf* tmp_buf = create_buffer();
     long    end_with;
-    clear_previous_fount(x);
     end_with = translate_math_node(style, tmp_buf, x);
     strip_trailing_space(tmp_buf);
 
@@ -550,14 +548,14 @@ translate_overhead_symbol(int style, StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates node as a subscript
-static void
+static long
 translate_subscript(int style, StrBuf* buf, mxml_node_t* x)
 {
     // Numeric indices are encoded as lowered braille digits
     if (is_numeric_mn(x))
     {
         translate_lowered_digits(buf, get_element_text(x));
-        return;
+        return END_WITH_LOWERED_DIGIT;
     }
 
     // Dot 16 and 12456 encloses subscript
@@ -565,15 +563,16 @@ translate_subscript(int style, StrBuf* buf, mxml_node_t* x)
     if (!translate_overhead_symbol(style, buf, x))
         translate_base(style, buf, x);
     append_char(buf, ']');
+    return END_WITH_OTHER;
 }
 
 
 /// @brief Translates node as a superscript
-static void
+static long
 translate_superscript(int style, StrBuf* buf, mxml_node_t* x)
 {
     // Overhead symbols are appended directly
-    if (translate_overhead_symbol(style, buf, x))  return;
+    if (translate_overhead_symbol(style, buf, x))  return END_WITH_OTHER;
 
     // Dot 346 starts superscript
     append_char(buf, '+');
@@ -582,12 +581,13 @@ translate_superscript(int style, StrBuf* buf, mxml_node_t* x)
     if (is_numeric_mn(x))
     {
         translate_lowered_digits(buf, get_element_text(x));
-        return;
+        return END_WITH_LOWERED_DIGIT;
     }
 
     // Dot 12456 ends superscript
     translate_base(style, buf, x);
     append_char(buf, ']');
+    return END_WITH_OTHER;
 }
 
 
@@ -889,62 +889,33 @@ translate_word_operator(int style, StrBuf* buf, const char* name)
 }
 
 
-/// @brief Translates string as literal text
-static void
-translate_literal_text(StrBuf* buf, const char* str)
-{
-    if (!str)  return;
-    for (;  *str;  ++str)
-    {
-        char c = *str;
-        switch (c)
-        {
-            case '(':   append_text(buf, "7");   break;
-            case ')':   append_text(buf, ",7");  break;
-            case '!':   append_text(buf, "6");   break;
-            case '.':   append_text(buf, "4");   break;
-            case ':':   append_text(buf, "3");   break;
-            case ';':   append_text(buf, "2");   break;
-            case ',':   append_text(buf, "1");   break;
-            case '\'':  append_text(buf, "'");   break;
-            case ' ':   append_text(buf, " ");   break;
-            default:
-                if ((c >= 'a') && (c <= 'z'))
-                    append_char(buf, c);
-                else if ((c >= 'A') && (c <= 'Z'))
-                {
-                    append_char(buf, ',');
-                    append_char(buf, c - 'A' + 'a');
-                }
-                break;
-        }
-    }
-}
-
-
-/** @brief Translates <mi> containing Latin identifier.
-    @return     Non-zero value if translation was successful.
+/** @brief Translates Latin identifier.
+    @return     Fount sign of identifier.  @p NULL if translation failed.
+    @param style            Current letter style.
+    @param buf              Buffer to append braille translation.
+    @param isIdentifier     Non-zero if translating <mi> text.
+    @param prevFount        Previous fount sign.
+    @param str              String to translate.
+    @param nextStr          The next string to translate.
   */
-static int
-translate_latin_identifier(int style, StrBuf* buf, mxml_node_t* x)
+static const char*
+translate_latin_identifier(int style, StrBuf* buf, int isIdentifier,
+        const char* prevFount, const char* str, const char* nextStr)
 {
     char        letter;
-    const char* prev_fount;
-    const char* fount = lookup_latin(style, x, &letter);
-    if (!fount)  return 0;
+    const char* new_fount;
+    const char* fount = lookup_latin(style, str, &letter);
+    if (!fount)  return NULL;
 
     // Remember fount to support processing of consecutive identifiers
-    mxmlElementSetAttr(x, "fount", fount);
+    new_fount = fount;
 
     // Handle consecutive sequence
-    prev_fount = get_previous_fount(x);
-    if (!prev_fount || (strcmp(prev_fount, fount) != 0))
+    if (!prevFount || (strcmp(prevFount, fount) != 0))
     {
         // Start of new fount
         const char*  next_fount;
-        mxml_node_t* y = get_next_element(x);
-        if (!is_xml_element(y, "mi"))  y = NULL;
-        next_fount = lookup_latin(style, y, NULL);
+        next_fount = lookup_latin(style, nextStr, NULL);
         if (next_fount && strcmp(fount, next_fount) == 0)
         {
             // Start of multiple identifiers with same fount
@@ -956,18 +927,14 @@ translate_latin_identifier(int style, StrBuf* buf, mxml_node_t* x)
         // Drop lowercase fount if possible
         while (strcmp(fount, ";") == 0)
         {
-            mxml_node_t* prev;
-            size_t       len;
-            char         last = '\0';
-
             // Retain fount for 'o' to distinguish from right bracket
-            if (letter == 'o')  break;
+            if (isIdentifier && (letter == 'o'))  break;
 
             // Retain fount if confusion may arise
             if (buf->mpPriv != END_WITH_OTHER)  break;
 
             // Retain fount if previous fount is different
-            if (prev_fount)  break;
+            if (prevFount)  break;
 
             // Drop redundant fount
             fount = NULL;
@@ -980,9 +947,12 @@ translate_latin_identifier(int style, StrBuf* buf, mxml_node_t* x)
         switch (letter)
         {
             case 'o':
-                // 'o' should always have fount sign
-                mxmlElementDeleteAttr(x, "fount");
-                break;
+                if (isIdentifier)
+                {
+                    // 'o' should always have fount sign
+                    new_fount = NULL;
+                    break;
+                }
 
             default:
                 fount = NULL;
@@ -996,7 +966,7 @@ translate_latin_identifier(int style, StrBuf* buf, mxml_node_t* x)
         append_text(buf, fount);
         append_char(buf, letter);
     }
-    else if (prev_fount)
+    else if (prevFount)
     {
         append_char(buf, letter);
     }
@@ -1005,33 +975,37 @@ translate_latin_identifier(int style, StrBuf* buf, mxml_node_t* x)
         char text[2] = {letter, '\0'};
         append_text_with_fount(buf, text);
     }
-    return 1;
+    return new_fount;
 }
 
 
-/** @brief Translates <mi> containing Greek identifier.
-    @return     Non-zero value if translation was successful.
+/** @brief Translates Greek identifier.
+    @return     Fount sign of identifier.  @p NULL if translation failed.
+    @param style            Current letter style.
+    @param buf              Buffer to append braille translation.
+    @param isIdentifier     Non-zero if translating <mi> text.
+    @param prevFount        Previous fount sign.
+    @param str              String to translate.
+    @param nextStr          The next string to translate.
   */
-static int
-translate_greek_identifier(int style, StrBuf* buf, mxml_node_t* x)
+static const char*
+translate_greek_identifier(int style, StrBuf* buf, int isIdentifier,
+        const char* prevFount, const char* str, const char* nextStr)
 {
     char        letter;
-    const char* prev_fount;
-    const char* fount = lookup_greek(style, x, &letter);
-    if (!fount)  return 0;
+    const char* new_fount;
+    const char* fount = lookup_greek(style, str, &letter);
+    if (!fount)  return NULL;
 
     // Remember fount to support processing of consecutive identifiers
-    mxmlElementSetAttr(x, "fount", fount);
+    new_fount = fount;
 
     // Handle consecutive sequence
-    prev_fount = get_previous_fount(x);
-    if (!prev_fount || (strcmp(prev_fount, fount) != 0))
+    if (!prevFount || (strcmp(prevFount, fount) != 0))
     {
         // Start of new fount
         const char*  next_fount;
-        mxml_node_t* y = get_next_element(x);
-        if (!is_xml_element(y, "mi"))  y = NULL;
-        next_fount = lookup_greek(style, y, NULL);
+        next_fount = lookup_greek(style, nextStr, NULL);
         if (next_fount && strcmp(fount, next_fount) == 0)
         {
             // Start of multiple identifiers with same fount
@@ -1045,9 +1019,12 @@ translate_greek_identifier(int style, StrBuf* buf, mxml_node_t* x)
         switch (letter)
         {
             case ':':
-                // 'η' should always have fount sign
-                mxmlElementDeleteAttr(x, "fount");
-                break;
+                if (isIdentifier)
+                {
+                    // 'η' should always have fount sign
+                    new_fount = NULL;
+                    break;
+                }
 
             default:
                 fount = "";
@@ -1058,31 +1035,47 @@ translate_greek_identifier(int style, StrBuf* buf, mxml_node_t* x)
     // Append translation
     append_text(buf, fount);
     append_char(buf, letter);
-    return 1;
+    return new_fount;
 }
 
 
-/** @brief Translates <mi> containing symbolic identifier.
-    @return     Non-zero value if translation was successful.
+/** @brief Translates symbolic identifier.
+    @return     Fount sign of identifier.  @p NULL if translation failed.
+    @param style            Current letter style.
+    @param buf              Buffer to append braille translation.
+    @param isIdentifier     Non-zero if translating <mi> text.
+    @param prevFount        Previous fount sign.
+    @param str              String to translate.
+    @param nextStr          The next string to translate.
   */
-static int
-translate_symbolic_identifier(int style, StrBuf* buf, mxml_node_t* x)
+static const char*
+translate_symbolic_identifier(int style, StrBuf* buf, int isIdentifier,
+        const char* prevFount, const char* str, const char* nextStr)
 {
-    const char* name = get_element_text(x);
     const char* symbols[] =
     {
         "?", "--",
         "…", "'''",
+        "(", "7",
+        ")", ",7",
+        "!", "6",
+        ".", "4",
+        ":", "3",
+        ";", "2",
+        ",", "1",
+        "'", "'",
+        " ", " ",
 
         // List terminator
         NULL
     };
     const char** sym;
+    size_t       len = strlen(str);
 
     // Check all known symbolic identifiers 
     for (sym = symbols;  *sym;  sym += 2)
     {
-        if (strcmp(name, sym[0]) != 0)  continue;
+        if (!starts_with(str, len, sym[0]))  continue;
 
         // Found symbolic identifier, translate now
         if (strcmp(sym[1], "--") == 0)
@@ -1095,11 +1088,111 @@ translate_symbolic_identifier(int style, StrBuf* buf, mxml_node_t* x)
         append_text(buf, sym[1]);
 
         // Report successful translation
-        return 1;
+        return "";
     }
 
     // Report failed translation
-    return 0;
+    return NULL;
+}
+
+
+/// @brief Translates string as literal text
+static void
+translate_literal_text(int style, StrBuf* buf,
+        int isIdentifier, const char* str)
+{
+    const char* fount = NULL;
+
+    if (!str)  return;
+    while (*str)
+    {
+        const char* new_fount = NULL;
+        const char* next = next_utf8(str);
+
+        // Perform translation
+        if (!new_fount)
+            new_fount = translate_latin_identifier(style, buf,
+                    isIdentifier, fount, str, next);
+        if (!new_fount)
+            new_fount = translate_greek_identifier(style, buf,
+                    isIdentifier, fount, str, next);
+        if (!new_fount)
+            new_fount = translate_symbolic_identifier(style, buf,
+                    isIdentifier, fount, str, next);
+
+        // Remember new fount
+        fount = new_fount;
+
+        // Advance to next UTF-8 sequence
+        str = next;
+    }
+}
+
+
+/** @brief Translates <mi> containing mathematical unit.
+    @return     Non-zero value if translation was successful.
+  */
+static int
+translate_mathematical_unit(int style, StrBuf* buf, mxml_node_t* x)
+{
+    const char* units[] =
+    {
+        // Units without leading space
+        "£",    "@l",
+        "$",    "@4",
+        "¢",    "@c",
+        "€",    "@e",
+        "/",    "_/",
+        "°",    "0",
+        "′",    ".",
+        "″",    "_",
+        "㎭",   "-",
+
+        // Units with leading space
+        "Å",    " ^a",
+        "%",    " 3p",
+
+        // List terminator
+        NULL
+    };
+    const char** u;
+    const char*  text;
+    size_t       len;
+
+    // Check all known symbolic units
+    text = get_element_text(x);
+    len  = strlen(text);
+    if (!len)  return 0;
+    for (u = units;  *u;  u += 2)
+    {
+        if (strcmp(text, u[0]) != 0)  continue;
+        if ((u[1][0] == '0') &&
+                (buf->mpPriv == (void*)END_WITH_LOWERED_DIGIT))
+        {
+            // Add '+' to prevent misinterpretation of degree as subscript
+            append_char(buf, '+');
+        }
+        append_text(buf, u[1]);
+        return 1;
+    }
+
+    // Translate textual unit
+    if (buf->mpPriv == (void*)END_WITH_UNIT_MI)
+        append_char(buf, '\'');
+    else
+        append_char(buf, ' ');
+    if ((text[0] >= 'a' && text[0] <= 'z') &&
+            ((text[1] == '\0') || (text[1] >= 'A' && text[1] <= 'Z')))
+    {
+        // Append fount for single Latin letter or lower case followed by
+        // upper case letter
+        append_char(buf, ';');
+    }
+
+    // Lowercase Latin fount sign not needed in translation
+    buf->mpPriv = (void*)END_WITH_OTHER;
+    translate_literal_text(style, buf, NOT_IDENTIFIER, text);
+    return 1;
 }
 
 
@@ -1159,6 +1252,14 @@ translate_mrow(int style, StrBuf* buf, mxml_node_t* x)
 }
 
 
+/// @brief Translates <mpadded> node
+static long
+translate_mpadded(int style, StrBuf* buf, mxml_node_t* x)
+{
+    return translate_children(style, buf, x);
+}
+
+
 /// @brief Translates <mfenced> node
 static long
 translate_mfenced(int style, StrBuf* buf, mxml_node_t* x)
@@ -1208,24 +1309,26 @@ translate_mfrac(int style, StrBuf* buf, mxml_node_t* x)
         append_char(buf, '#');
         translate_normal_digits(buf, get_element_text(num));
         translate_lowered_digits(buf, get_element_text(denom));
-        return END_WITH_OTHER;
+        return END_WITH_LOWERED_DIGIT;
     }
 
     // Enclose the fraction in bracket
     append_char(buf, '<');
 
-    // Enclose numerator in brackets
+    // Enclose complex numerator in brackets
     simple = is_simple_term(num);
     if (!simple)  append_char(buf, '<');
+    num = group_standalone_mi(num);
     translate_math_node(style, buf, num);
     if (!simple)  append_char(buf, '>');
 
     // Dot 456-34 is fraction line
     append_text(buf, "_/");
 
-    // Enclose denominator in brackets
+    // Enclose complex denominator in brackets
     simple = is_simple_term(denom);
     if (!simple)  append_char(buf, '<');
+    denom = group_standalone_mi(denom);
     translate_math_node(style, buf, denom);
     if (!simple)  append_char(buf, '>');
 
@@ -1303,8 +1406,7 @@ translate_msub_munder(int style, StrBuf* buf, mxml_node_t* x)
 
     // Translate index as subscript
     if (is_numeric_mn(base))  append_char(buf, '*');       
-    translate_subscript(style, buf, index);
-    return END_WITH_OTHER;
+    return translate_subscript(style, buf, index);
 }
 
 
@@ -1323,8 +1425,7 @@ translate_msup_mover(int style, StrBuf* buf, mxml_node_t* x)
     translate_base(style, buf, base);
 
     // Translate index as superscript
-    translate_superscript(style, buf, index);
-    return END_WITH_OTHER;
+    return translate_superscript(style, buf, index);
 }
 
 
@@ -1349,8 +1450,7 @@ translate_msubsup_munderover(int style, StrBuf* buf, mxml_node_t* x)
     translate_subscript(style, buf, sub);
 
     // Translate superscript
-    translate_superscript(style, buf, sup);
-    return END_WITH_OTHER;
+    return translate_superscript(style, buf, sup);
 }
 
 
@@ -1443,6 +1543,9 @@ translate_mtext(int style, StrBuf* buf, mxml_node_t* x)
     // Append opening quote
     append_text(buf, "8");
 
+    // Lowercase Latin fount sign not needed after opening quote
+    buf->mpPriv = (void*)END_WITH_OTHER;
+
     // Translate each of the child text node
     for (x = mxmlGetFirstChild(x);  x;  x = mxmlGetNextSibling(x))
     {
@@ -1454,7 +1557,7 @@ translate_mtext(int style, StrBuf* buf, mxml_node_t* x)
         for (;  whitespace > 0;  --whitespace)  append_char(buf, ' ');
 
         // Translate actual string
-        translate_literal_text(buf, str);
+        translate_literal_text(style, buf, NOT_IDENTIFIER, str);
     }
 
     // Append closing quote and trailing space
@@ -1462,15 +1565,6 @@ translate_mtext(int style, StrBuf* buf, mxml_node_t* x)
 
     // Remember ending
     return END_WITH_MTEXT;
-}
-
-
-/// @brief Translates <mspace> node
-static long
-translate_mspace(int style, StrBuf* buf, mxml_node_t* x)
-{
-    // Ignore <mspace>
-    return (long)buf->mpPriv;
 }
 
 
@@ -1494,19 +1588,43 @@ translate_mo(int style, StrBuf* buf, mxml_node_t* x)
 static long
 translate_mi(int style, StrBuf* buf, mxml_node_t* x)
 {
-    const char* name = get_element_text(x);
+    StrBuf* text;
 
-    // Attempt to translate as Latin identifier
-    if (translate_latin_identifier(style, buf, x))
-        return END_WITH_OTHER;
+    // Translate <mi> nodes with "normal" style as mathematical units 
+    if (style == STYLE_NORMAL)
+    {
+        translate_mathematical_unit(style, buf, x);
+        return END_WITH_UNIT_MI;
+    }
 
-    // Attempt to translate as Greek identifier
-    if (translate_greek_identifier(style, buf, x))
-        return END_WITH_OTHER;
+    // Concatenate text from succeeding <mi> nodes
+    text = create_buffer();
+    append_text(text, get_element_text(x));
+    for (;;)
+    {
+        const char*  name;
 
-    // Attempt to translate as symbolic identifier
-    if (translate_symbolic_identifier(style, buf, x))
-        return END_WITH_OTHER;
+        // Stop when there is no more succeeding nodes
+        mxml_node_t* next = get_next_element(x);
+        if (!next)  break;
+
+        // Stop if next node is not <mi>
+        if (strcmp(mxmlGetElement(next), "mi") != 0)  break;
+
+        // Stop if math style is different
+        if (find_math_style(style, next) != style)  break;
+
+        // Concatenate text from next element and delete it
+        append_text(text, get_element_text(next));
+        mxmlDelete(next);
+    }
+
+    // Translate as literal text
+    translate_literal_text(style, buf, IS_IDENTIFIER, text->mpStr);
+
+    // Clean up
+    destroy_buffer(text);
+    return END_WITH_OTHER;
 }
 
 
@@ -1540,6 +1658,7 @@ translate_math_node(int style, StrBuf* buf, mxml_node_t* x)
         {"menclose",      translate_menclose          },
         {"mtable",        translate_mtable            },
         {"mrow",          translate_mrow              },
+        {"mpadded",       translate_mpadded           },
         {"mfenced",       translate_mfenced           },
         {"mfrac",         translate_mfrac             },
         {"mroot",         translate_mroot             },
@@ -1552,7 +1671,6 @@ translate_math_node(int style, StrBuf* buf, mxml_node_t* x)
         {"munderover",    translate_msubsup_munderover},
         {"mmultiscripts", translate_mmultiscripts     },
         {"mtext",         translate_mtext             },
-        {"mspace",        translate_mspace            },
         {"mo",            translate_mo                },
         {"mi",            translate_mi                },
         {"mn",            translate_mn                },
@@ -1598,7 +1716,7 @@ brl2mml_to_ukmaths(const char* mml, int* used)
 
     // Translate parsed elements
     for (elem = first_child_elem(x);  elem;  elem = get_next_element(elem))
-        translate_math_node(STYLE_NORMAL, buf, elem);
+        translate_math_node(STYLE_ITALIC, buf, elem);
 
     // Clean up
     mxmlDelete(x);

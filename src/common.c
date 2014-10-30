@@ -177,6 +177,28 @@ starts_with(const char* ptr, size_t len, const char* text)
 }
 
 
+const char*
+next_utf8(const char* str)
+{
+    // Ignore NULL pointers
+    if (!str)  return NULL;
+
+    // Do not advance beyond end of string
+    if (!*str)  return str;
+
+    // Advance to next UTF-8 start character
+    while (++str)
+    {
+        char c = *str;
+        if (!c)  break;
+        if ((c & 0xc0) != 0x80)  break;
+    }
+
+    // Return updated pointer to caller
+    return str;
+}
+
+
 void
 brl2mml_free(void* ptr)
 {

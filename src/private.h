@@ -47,6 +47,8 @@ typedef struct
 } StrBuf;
 
 
+/// @name Utility functions for resizable string buffer @{
+
 /** @brief Creates a string buffer.
     @return     Pointer to a new string buffer.
   */
@@ -110,7 +112,12 @@ void append_text(StrBuf* buf, const char* suffix);
   */
 void prepend_text(StrBuf* buf, const char* prefix);
 
-/** @brief Checks whether a string starts with a given text
+/// @}
+
+
+/// @name Utility functions for C string @{
+
+/** @brief Checks whether a string starts with a given text.
     @return     Non-zero if a match is found.
     @return     Zero if there is no match.
     @param str      Pointer to a string that requires checking.
@@ -118,6 +125,15 @@ void prepend_text(StrBuf* buf, const char* prefix);
     @param text     NULL-terminated text to match against. 
   */
 int starts_with(const char* str, size_t len, const char* text);
+
+/** @brief Advances to start of next UTF-8 character sequence.
+    @return     NULL if @p str is NULL.
+    @return     Pointer to next UTF-8 character sequence in @p str.
+    @param str  NULL-terminated string.
+  */
+const char* next_utf8(const char* str);
+
+/// @}
 
 
 /// @name Utility functions for Mini-XML @{
@@ -219,7 +235,6 @@ void remove_round_bracket(mxml_node_t* x);
     @param unit     Name of the unit.
   */
 mxml_node_t* new_unit_element(mxml_node_t* x, const char* unit);
-
 
 /// @}
 

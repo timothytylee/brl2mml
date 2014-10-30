@@ -1932,7 +1932,6 @@ parse_next_unit(mxml_node_t* x, const char* brl, size_t len, int count)
     {
         "^a",   "Å",
         "3p",   "%",
-        "dg",   "°",
         "-",    "㎭",
 
         // List terminator
@@ -3093,6 +3092,9 @@ parse_literal_text(mxml_node_t* x, const char* brl, size_t len)
             append_text(buf, pct[1]);
             used = strlen(pct[0]);
         }
+
+        // Ignore lowercase Latin fount
+        if (c == ';')  used = 1;
 
         // Append all other characters literally
         if (!used)
