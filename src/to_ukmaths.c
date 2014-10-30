@@ -122,30 +122,23 @@ find_math_style(int parentStyle, mxml_node_t* x)
 }
 
 
-/// @brief Checks whether an element is a <mn> node containing only digits
+/// @brief Checks whether a string contains only digits
 static int
-is_numeric_mn(mxml_node_t* x)
+is_numeric_string(const char* str)
 {
-    const char* value;
-
-    // Check for <mn> element
-    if (!is_xml_element(x, "mn"))  return 0;
-
-    // Check every character in the value of <mn>
-    value = get_element_text(x);
-    while (*value)
+    // Check every character in the string
+    while (*str)
     {
-        if (strchr("0123456789", *value))
+        size_t len = strlen(str);
+        if (strchr("0123456789", *str))
         {
-            ++value;
+            ++str;
             continue;
         }
-        else if ((0 == strncmp(value, UTF8_DOT_OPERATOR,
-                               strlen(UTF8_DOT_OPERATOR))) ||
-                (0 == strncmp(value, UTF8_MIDDLE_DOT,
-                              strlen(UTF8_MIDDLE_DOT))))
+        else if (starts_with(str, len, UTF8_DOT_OPERATOR) ||
+                starts_with(str, len, UTF8_MIDDLE_DOT))
         {
-            value += strlen(UTF8_DOT_OPERATOR);
+            str = next_utf8(str);
             continue;
         }
         return 0;
@@ -153,6 +146,45 @@ is_numeric_mn(mxml_node_t* x)
 
     // All characters are digits
     return 1;
+}
+
+
+/// @brief Checks whether an element is a <mn> node containing only digits
+static int
+is_numeric_mn(mxml_node_t* x)
+{
+    // Check for <mn> element
+    if (!is_xml_element(x, "mn"))  return 0;
+
+    // Check the value of <mn>
+    return is_numeric_string(get_element_text(x));
+}
+
+
+/// @brief Checks for a numeric index that can be encoded with lowered digits
+static int
+is_numeric_index(mxml_node_t* x)
+{
+    const char* value;
+    size_t      len;
+
+    // A numeric <mn> can be encoded with lowered digits
+    if (is_numeric_mn(x))  return 1;
+
+    // Otherwise check for <mrow> element
+    if (is_xml_element(x, "mrow"))
+    {
+        mxml_node_t* mo = first_child_elem(x);
+        mxml_node_t* mn = mo ? get_next_element(mo) : NULL;
+        mxml_node_t* last = last_child_elem(x);
+        if ((mn == last) &&
+                (is_operator(mo, "−") || is_operator(mo, "-")) &&
+                is_numeric_mn(mn))
+            return 1;
+    }
+
+    // Report failure
+    return 0;
 }
 
 
@@ -207,7 +239,7 @@ is_simple_term(mxml_node_t* x)
             if (is_simple_term(x))
             {
                 x = get_next_element(x);
-                if (is_numeric_mn(x))  return 1;
+                if (is_numeric_index(x))  return 1;
             }
             return 0;
         }
@@ -305,21 +337,41 @@ translate_lowered_digits(StrBuf* buf, const char* value)
 {
     while (*value)
     {
+        size_t len = strlen(value);
         if (strchr("0123456789", *value))
         {
             append_char(buf, *value);
             ++value;
         }
-        else if ((0 == strncmp(value, UTF8_DOT_OPERATOR,
-                               strlen(UTF8_DOT_OPERATOR))) ||
-                (0 == strncmp(value, UTF8_MIDDLE_DOT,
-                              strlen(UTF8_MIDDLE_DOT))))
+        else if (starts_with(value, len, UTF8_DOT_OPERATOR) ||
+                starts_with(value, len, UTF8_MIDDLE_DOT))
         {
             // Dot 46-3 is the dot used in statistics
             append_text(buf, ".'");
-            value += strlen(UTF8_DOT_OPERATOR);
+            value = next_utf8(value);
         }
         else  ++value;
+    }
+}
+
+
+/// @brief Translates an element with lowered braille digits
+static void
+translate_numeric_index(StrBuf* buf, mxml_node_t* x)
+{
+    if (is_xml_element(x, "mn"))
+    {
+        translate_lowered_digits(buf, get_element_text(x));
+    }
+    else if (is_xml_element(x, "mrow"))
+    {
+        mxml_node_t* mo = first_child_elem(x);
+        mxml_node_t* mn = mo ? get_next_element(mo) : NULL;
+        if (mo && mn)
+        {
+            append_text(buf, ";-");
+            translate_lowered_digits(buf, get_element_text(mn));
+        }
     }
 }
 
@@ -496,12 +548,14 @@ translate_children(int style, StrBuf* buf, mxml_node_t* x)
 static long
 translate_base(int style, StrBuf* buf, mxml_node_t* x)
 {
+    StrBuf* tmp_buf = create_buffer();
+    int     simple = is_simple_term(x);
+    long    end_with;
+
     // Protect standalone <mi>
     x = group_standalone_mi(x);
 
     // Translate node into temporary buffer
-    StrBuf* tmp_buf = create_buffer();
-    long    end_with;
     end_with = translate_math_node(style, tmp_buf, x);
     strip_trailing_space(tmp_buf);
 
@@ -509,7 +563,7 @@ translate_base(int style, StrBuf* buf, mxml_node_t* x)
     if (tmp_buf->mpStr[0] == '3')  prepend_char(tmp_buf, '@');
 
     // Surround complex expression with bracket
-    if (!is_simple_term(x))
+    if (!simple)
     {
         prepend_char(tmp_buf, '<');
         append_char(tmp_buf, '>');
@@ -552,9 +606,9 @@ static long
 translate_subscript(int style, StrBuf* buf, mxml_node_t* x)
 {
     // Numeric indices are encoded as lowered braille digits
-    if (is_numeric_mn(x))
+    if (is_numeric_index(x))
     {
-        translate_lowered_digits(buf, get_element_text(x));
+        translate_numeric_index(buf, x);
         return END_WITH_LOWERED_DIGIT;
     }
 
@@ -578,9 +632,9 @@ translate_superscript(int style, StrBuf* buf, mxml_node_t* x)
     append_char(buf, '+');
 
     // Numeric indices are encoded as lowered braille digits
-    if (is_numeric_mn(x))
+    if (is_numeric_index(x))
     {
-        translate_lowered_digits(buf, get_element_text(x));
+        translate_numeric_index(buf, x);
         return END_WITH_LOWERED_DIGIT;
     }
 
@@ -1161,8 +1215,7 @@ translate_mathematical_unit(int style, StrBuf* buf, mxml_node_t* x)
 
     // Check all known symbolic units
     text = get_element_text(x);
-    len  = strlen(text);
-    if (!len)  return 0;
+    if (!strlen(text))  return 0;
     for (u = units;  *u;  u += 2)
     {
         if (strcmp(text, u[0]) != 0)  continue;
@@ -1178,7 +1231,12 @@ translate_mathematical_unit(int style, StrBuf* buf, mxml_node_t* x)
 
     // Translate textual unit
     if (buf->mpPriv == (void*)END_WITH_UNIT_MI)
-        append_char(buf, '\'');
+    {
+        char last = '\0';
+        len = strlen(buf->mpStr);
+        if (len > 0)  last = buf->mpStr[len - 1];
+        if (last != '/')  append_char(buf, '\'');
+    }
     else
         append_char(buf, ' ');
     if ((text[0] >= 'a' && text[0] <= 'z') &&
@@ -1405,7 +1463,7 @@ translate_msub_munder(int style, StrBuf* buf, mxml_node_t* x)
     translate_base(style, buf, base);
 
     // Translate index as subscript
-    if (is_numeric_mn(base))  append_char(buf, '*');       
+    if (is_numeric_index(base))  append_char(buf, '*');       
     return translate_subscript(style, buf, index);
 }
 
@@ -1420,6 +1478,15 @@ translate_msup_mover(int style, StrBuf* buf, mxml_node_t* x)
     // Make sure the required child elements are present
     if (!base)  return END_WITH_OTHER;
     if (!index)  return END_WITH_OTHER;
+
+    // Handle mathematical units with power
+    if (is_xml_element(base, "mi") && is_numeric_index(index) &&
+            (find_math_style(style, base) == STYLE_NORMAL))
+    {
+        translate_mathematical_unit(style, buf, base);
+        translate_superscript(style, buf, index);
+        return END_WITH_UNIT_MI;
+    }
 
     // Translate base
     translate_base(style, buf, base);
@@ -1446,7 +1513,7 @@ translate_msubsup_munderover(int style, StrBuf* buf, mxml_node_t* x)
     translate_base(style, buf, base);
 
     // Translate subscript
-    if (is_numeric_mn(base))  append_char(buf, '*');       
+    if (is_numeric_index(base))  append_char(buf, '*');       
     translate_subscript(style, buf, sub);
 
     // Translate superscript
@@ -1512,7 +1579,7 @@ translate_mmultiscripts(int style, StrBuf* buf, mxml_node_t* x)
     // Translate pre-subscript
     if (presub)
     {
-        if (is_numeric_mn(presub))  append_char(buf, '*');       
+        if (is_numeric_index(presub))  append_char(buf, '*');       
         translate_subscript(style, buf, presub);
     }
 
