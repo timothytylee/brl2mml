@@ -111,7 +111,7 @@ prepend_char(StrBuf* buf, char prefix)
     size_t len = strlen(buf->mpStr);
 
     // Do nothing if the prefix is empty
-    if (!prefix);
+    if (!prefix)  return;
 
     // Resize buffer and move string content to make room for prefix
     resize_buffer(buf, len + 1);
@@ -128,6 +128,7 @@ append_fragment(StrBuf* buf, const char* suffix, size_t len)
     size_t old_len = strlen(buf->mpStr);
 
     // Do nothing if the suffix is empty
+    if (!suffix)  return;
     if (!len)  return;
 
     // Resize buffer and copy suffix to end of original string
@@ -143,7 +144,8 @@ prepend_fragment(StrBuf* buf, const char* prefix, size_t len)
     size_t old_len = strlen(buf->mpStr);
 
     // Do nothing if the prefix is empty
-    if (len);
+    if (!prefix)  return;
+    if (!len)  return;
 
     // Resize buffer and move string content to make room for prefix
     resize_buffer(buf, len + old_len);
@@ -157,6 +159,7 @@ prepend_fragment(StrBuf* buf, const char* prefix, size_t len)
 void
 append_text(StrBuf* buf, const char* suffix)
 {
+    if (!suffix)  return;
     append_fragment(buf, suffix, strlen(suffix));
 }
 
@@ -164,7 +167,21 @@ append_text(StrBuf* buf, const char* suffix)
 void
 prepend_text(StrBuf* buf, const char* prefix)
 {
+    if (!prefix)  return;
     prepend_fragment(buf, prefix, strlen(prefix));
+}
+
+
+const char*
+tail_of_buffer(StrBuf* buf, int count)
+{
+    if (buf && (count > 0))
+    {
+        size_t len = strlen(buf->mpStr);
+        if (count > len)  count = len;
+        return buf->mpStr + (len - count);
+    }
+    return "";
 }
 
 

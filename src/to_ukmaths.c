@@ -124,13 +124,13 @@ set_end_type(StrBuf* buf, int endType)
 static int
 has_trailing_space(StrBuf* buf)
 {
-    size_t len = strlen(buf->mpStr);
+    const char* tail = tail_of_buffer(buf, 1);
 
     // Consider empty string to have trailing space
-    if (len == 0)  return 1;
+    if (!*tail)  return 1;
 
     // Otherwise check for trailing space
-    return (strchr(" <", buf->mpStr[len - 1]) != NULL);
+    return (strchr(" <", *tail) != NULL);
 }
 
 
@@ -447,135 +447,6 @@ strip_trailing_space(StrBuf* buf)
     size_t len = strlen(buf->mpStr);
     if ((len > 0) && (buf->mpStr[len - 1] == ' '))
         buf->mpStr[len - 1] = '\0';
-}
-
-
-/** @brief Looks up the translation of a standalone Latin identifier.
-    @return     @p NULL if the node is not a Latin identifier.
-    @return     The fount that preceeds the translated letter.
-    @param style    Math style.
-    @param name     NULL-terminated name of identifier.
-    @param letter   The translated letter.
-  */
-static const char*
-lookup_latin(int style, const char* name, char* letter)
-{
-    char c;
-
-    // Ignore NULL names
-    if (!name)  return 0;
-    c = name[0];
-
-    // Lowercase Latin identifiers are translated as is
-    if ((c >= 'a') && (c <= 'z'))
-    {
-        if (letter)  *letter = c;
-        switch (style)
-        {
-            case STYLE_BOLD:  return "@";
-            default:          return ";";
-        }
-    }
-
-    // Uppercase Latin identifiers are shown in lowercase
-    if ((c >= 'A') && (c <= 'Z'))
-    {
-        if (letter)  *letter = c - 'A' + 'a';
-        switch (style)
-        {
-            case STYLE_BOLD:  return "^";
-            default:          return ",";
-        }
-    }
-
-    // Report failed translation
-    return NULL;
-}
-
-
-/** @brief Looks up the translation of a standalone Greek identifier.
-    @return     @p NULL if the node is not a Greek identifier.
-    @return     The fount that preceeds the translated letter.
-    @param style    Math style.
-    @param name     NULL-terminated name of identifier.
-    @param letter   The translated letter.
-  */
-static const char*
-lookup_greek(int style, const char* name, char* letter)
-{
-    const char* greek_letters[] =
-    {
-        "Α", "α", "a",
-        "Β", "β", "b",
-        "Γ", "γ", "g",
-        "Δ", "δ", "d",
-        "Ε", "ε", "e",
-        "Ε", "ϵ", "e",  // Alternate form of lowercase epsilon (U+03f5)
-        "Ζ", "ζ", "z",
-        "Η", "η", ":",
-        "Θ", "θ", "?",
-        "ϴ", "ϑ", "?",  // Alternate form of theta (U+03f4, U+03d1)
-        "Ι", "ι", "i",
-        "Κ", "κ", "k",
-        "Κ", "ϰ", "k",  // Alternate form of lowercase kappa (U+03f0)
-        "Λ", "λ", "l",
-        "Μ", "μ", "m",
-        "Ν", "ν", "n",
-        "Ξ", "ξ", "x",
-        "Ο", "ο", "o",
-        "Π", "π", "p",
-        "Π", "ϖ", "p",  // Alternate form of lowercase pi (U+03d6)
-        "Ρ", "ρ", "r",
-        "Ρ", "ϱ", "r",  // Alternate form of lowercase rho (U+03f1)
-        "Σ", "σ", "s",
-        "Ϲ", "ϲ", "s",  // Alternate form of sigma (U+03f9, U+03f2)
-        "Τ", "τ", "t",
-        "Υ", "υ", "u",
-        "ϒ", "υ", "u",  // Alternate form of uppercase upsilon (U+03d2)
-        "Φ", "φ", "f",
-        "Φ", "ϕ", "f",  // Alternate form of lowercase phi (U+03d5)
-        "Χ", "χ", "&",
-        "Ψ", "ψ", "y",
-        "Ω", "ω", "w",
-
-        // List terminator
-        NULL
-    };
-    const char** greek;
-    size_t       len;
-
-    // Ignore NULL names
-    if (!name)  return 0;
-    len = strlen(name);
-
-    // Check all known Greek identifiers 
-    for (greek = greek_letters;  *greek;  greek += 3)
-    {
-        // Test for uppercase identifier
-        if (starts_with(name, len, greek[0]))
-        {
-            if (letter)  *letter = greek[2][0];
-            switch (style)
-            {
-                case STYLE_BOLD:  return "^_";
-                default:          return "_";
-            }
-        }
-
-        // Test for lowercase identifier
-        if (starts_with(name, len, greek[1]))
-        {
-            if (letter)  *letter = greek[2][0];
-            switch (style)
-            {
-                case STYLE_BOLD:  return "@.";
-                default:          return ".";
-            }
-        }
-    }
-
-    // Report failed translation
-    return NULL;
 }
 
 
@@ -1007,206 +878,175 @@ translate_word_operator(int style, StrBuf* buf, const char* name)
 }
 
 
-/** @brief Translates Latin identifier.
-    @return     Fount sign of identifier.  @p NULL if translation failed.
-    @param style            Current letter style.
-    @param buf              Buffer to append braille translation.
-    @param isIdentifier     Non-zero if translating <mi> text.
-    @param prevFount        Previous fount sign.
-    @param str              String to translate.
-    @param nextStr          The next string to translate.
+/// @brief Literal text definition
+typedef struct
+{
+    const char* mpText;
+    const char* mpBraille;
+    const char* mpNormalFount;
+    const char* mpBoldFount;
+} LiteralRec;
+
+
+/** @brief Looks up braille translation of the first Unicode character.
+    @return     The braille translation.
+    @return     @p NULL if the first Unicode character cannot be translated.
+    @param style    Math style.
+    @param str      The NULL-terminated string to translate.
+    @param fount    The fount sign that preceeds the translation.
   */
 static const char*
-translate_latin_identifier(int style, StrBuf* buf, int isIdentifier,
-        const char* prevFount, const char* str, const char* nextStr)
+lookup_literal(int style, const char* str, const char** fount)
 {
-    char        letter;
-    const char* new_fount;
-    const char* fount = lookup_latin(style, str, &letter);
-    if (!fount)  return NULL;
-
-    // Remember fount to support processing of consecutive identifiers
-    new_fount = fount;
-
-    // Handle consecutive sequence
-    if (!prevFount || (strcmp(prevFount, fount) != 0))
+    const LiteralRec literals[] =
     {
-        // Start of new fount
-        const char*  next_fount;
-        next_fount = lookup_latin(style, nextStr, NULL);
-        if (next_fount && strcmp(fount, next_fount) == 0)
-        {
-            // Start of multiple identifiers with same fount
-            if      (strcmp(fount, ",") == 0)  fount = ",,";
-            else if (strcmp(fount, "@") == 0)  fount = "@@";
-            else if (strcmp(fount, "^") == 0)  fount = "^^";
-        }
+        /* Lowercase Latin */
+        {"a", "a", ";", "@"},
+        {"b", "b", ";", "@"},
+        {"c", "c", ";", "@"},
+        {"d", "d", ";", "@"},
+        {"e", "e", ";", "@"},
+        {"f", "f", ";", "@"},
+        {"g", "g", ";", "@"},
+        {"h", "h", ";", "@"},
+        {"i", "i", ";", "@"},
+        {"j", "j", ";", "@"},
+        {"k", "k", ";", "@"},
+        {"l", "l", ";", "@"},
+        {"m", "m", ";", "@"},
+        {"n", "n", ";", "@"},
+        {"o", "o", ";", "@"},
+        {"p", "p", ";", "@"},
+        {"q", "q", ";", "@"},
+        {"r", "r", ";", "@"},
+        {"s", "s", ";", "@"},
+        {"t", "t", ";", "@"},
+        {"u", "u", ";", "@"},
+        {"v", "v", ";", "@"},
+        {"w", "w", ";", "@"},
+        {"x", "x", ";", "@"},
+        {"y", "y", ";", "@"},
+        {"z", "z", ";", "@"},
 
-        // Drop lowercase fount if possible
-        while (strcmp(fount, ";") == 0)
-        {
-            // Retain fount for 'o' to distinguish from right bracket
-            if (isIdentifier && (letter == 'o'))  break;
+        /* Uppercase Latin */
+        {"A", "a", ",", "^"},
+        {"B", "b", ",", "^"},
+        {"C", "c", ",", "^"},
+        {"D", "d", ",", "^"},
+        {"E", "e", ",", "^"},
+        {"F", "f", ",", "^"},
+        {"G", "g", ",", "^"},
+        {"H", "h", ",", "^"},
+        {"I", "i", ",", "^"},
+        {"J", "j", ",", "^"},
+        {"K", "k", ",", "^"},
+        {"L", "l", ",", "^"},
+        {"M", "m", ",", "^"},
+        {"N", "n", ",", "^"},
+        {"O", "o", ",", "^"},
+        {"P", "p", ",", "^"},
+        {"Q", "q", ",", "^"},
+        {"R", "r", ",", "^"},
+        {"S", "s", ",", "^"},
+        {"T", "t", ",", "^"},
+        {"U", "u", ",", "^"},
+        {"V", "v", ",", "^"},
+        {"W", "w", ",", "^"},
+        {"X", "x", ",", "^"},
+        {"Y", "y", ",", "^"},
+        {"Z", "z", ",", "^"},
 
-            // Retain fount if confusion may arise
-            if (get_end_type(buf) != END_WITH_OTHER)  break;
+        // Lowercase Greek
+        {"α", "a", ".", "@."},
+        {"β", "b", ".", "@."},
+        {"γ", "g", ".", "@."},
+        {"δ", "d", ".", "@."},
+        {"ε", "e", ".", "@."},
+        {"ϵ", "e", ".", "@."},  // Alternate lowercase epsilon (U+03f5)
+        {"ζ", "z", ".", "@."},
+        {"η", ":", ".", "@."},
+        {"θ", "?", ".", "@."},
+        {"ϑ", "?", ".", "@."},  // Alternate lowercase theta (U+03d1)
+        {"ι", "i", ".", "@."},
+        {"κ", "k", ".", "@."},
+        {"ϰ", "k", ".", "@."},  // Alternate lowercase kappa (U+03f0)
+        {"λ", "l", ".", "@."},
+        {"μ", "m", ".", "@."},
+        {"ν", "n", ".", "@."},
+        {"ξ", "x", ".", "@."},
+        {"ο", "o", ".", "@."},
+        {"π", "p", ".", "@."},
+        {"ϖ", "p", ".", "@."},  // Alternate lowercase pi (U+03d6)
+        {"ρ", "r", ".", "@."},
+        {"ϱ", "r", ".", "@."},  // Alternate lowercase rho (U+03f1)
+        {"σ", "s", ".", "@."},
+        {"ϲ", "s", ".", "@."},  // Alternate lowercase sigma (U+03f2)
+        {"τ", "t", ".", "@."},
+        {"υ", "u", ".", "@."},
+        {"φ", "f", ".", "@."},
+        {"ϕ", "f", ".", "@."},  // Alternate lowercase phi (U+03d5)
+        {"χ", "&", ".", "@."},
+        {"ψ", "y", ".", "@."},
+        {"ω", "w", ".", "@."},
 
-            // Retain fount if previous fount is different
-            if (prevFount)  break;
+        // Uppercase Greek
+        {"Α", "a", "_", "^_"},
+        {"Β", "b", "_", "^_"},
+        {"Γ", "g", "_", "^_"},
+        {"Δ", "d", "_", "^_"},
+        {"Ε", "e", "_", "^_"},
+        {"Ζ", "z", "_", "^_"},
+        {"Η", ":", "_", "^_"},
+        {"Θ", "?", "_", "^_"},
+        {"ϴ", "?", "_", "^_"},  // Alternate uppercase theta (U+03f4)
+        {"Ι", "i", "_", "^_"},
+        {"Κ", "k", "_", "^_"},
+        {"Λ", "l", "_", "^_"},
+        {"Μ", "m", "_", "^_"},
+        {"Ν", "n", "_", "^_"},
+        {"Ξ", "x", "_", "^_"},
+        {"Ο", "o", "_", "^_"},
+        {"Π", "p", "_", "^_"},
+        {"Ρ", "r", "_", "^_"},
+        {"Σ", "s", "_", "^_"},
+        {"Ϲ", "s", "_", "^_"},  // Alternate uppercase sigma (U+03f9)
+        {"Τ", "t", "_", "^_"},
+        {"Υ", "u", "_", "^_"},
+        {"ϒ", "u", "_", "^_"},  // Alternate uppercase upsilon (U+03d2)
+        {"Φ", "f", "_", "^_"},
+        {"Χ", "&", "_", "^_"},
+        {"Ψ", "y", "_", "^_"},
+        {"Ω", "w", "_", "^_"},
 
-            // Drop redundant fount
-            fount = NULL;
-            break;
-        }
-    }
-    else
-    {
-        // Same fount as previous one
-        switch (letter)
-        {
-            case 'o':
-                if (isIdentifier)
-                {
-                    // 'o' should always have fount sign
-                    new_fount = NULL;
-                    break;
-                }
-
-            default:
-                fount = NULL;
-                break;
-        }
-    }
-
-    // Append translation
-    if (fount)
-    {
-        append_text(buf, fount);
-        append_char(buf, letter);
-    }
-    else if (prevFount)
-    {
-        append_char(buf, letter);
-    }
-    else
-    {
-        char text[2] = {letter, '\0'};
-        append_text_with_fount(buf, text);
-    }
-    return new_fount;
-}
-
-
-/** @brief Translates Greek identifier.
-    @return     Fount sign of identifier.  @p NULL if translation failed.
-    @param style            Current letter style.
-    @param buf              Buffer to append braille translation.
-    @param isIdentifier     Non-zero if translating <mi> text.
-    @param prevFount        Previous fount sign.
-    @param str              String to translate.
-    @param nextStr          The next string to translate.
-  */
-static const char*
-translate_greek_identifier(int style, StrBuf* buf, int isIdentifier,
-        const char* prevFount, const char* str, const char* nextStr)
-{
-    char        letter;
-    const char* new_fount;
-    const char* fount = lookup_greek(style, str, &letter);
-    if (!fount)  return NULL;
-
-    // Remember fount to support processing of consecutive identifiers
-    new_fount = fount;
-
-    // Handle consecutive sequence
-    if (!prevFount || (strcmp(prevFount, fount) != 0))
-    {
-        // Start of new fount
-        const char*  next_fount;
-        next_fount = lookup_greek(style, nextStr, NULL);
-        if (next_fount && strcmp(fount, next_fount) == 0)
-        {
-            // Start of multiple identifiers with same fount
-            if      (strcmp(fount, ".") == 0)  fount = "..";
-            else if (strcmp(fount, "_") == 0)  fount = ",_";
-        }
-    }
-    else
-    {
-        // Same fount as previous one
-        switch (letter)
-        {
-            case ':':
-                if (isIdentifier)
-                {
-                    // 'η' should always have fount sign
-                    new_fount = NULL;
-                    break;
-                }
-
-            default:
-                fount = "";
-                break;
-        }
-    }
-
-    // Append translation
-    append_text(buf, fount);
-    append_char(buf, letter);
-    return new_fount;
-}
-
-
-/** @brief Translates symbolic identifier.
-    @return     Fount sign of identifier.  @p NULL if translation failed.
-    @param style            Current letter style.
-    @param buf              Buffer to append braille translation.
-    @param isIdentifier     Non-zero if translating <mi> text.
-    @param prevFount        Previous fount sign.
-    @param str              String to translate.
-    @param nextStr          The next string to translate.
-  */
-static const char*
-translate_symbolic_identifier(int style, StrBuf* buf, int isIdentifier,
-        const char* prevFount, const char* str, const char* nextStr)
-{
-    const char* symbols[] =
-    {
-        "?", "--",
-        "…", "'''",
-        "(", "7",
-        ")", ",7",
-        "!", "6",
-        ".", "4",
-        ":", "3",
-        ";", "2",
-        ",", "1",
-        "'", "'",
-        " ", " ",
+        // Symbols
+        {"?", "--",  NULL, NULL},
+        {"…", "'''", NULL, NULL},
+        {"(", "7",   NULL, NULL},
+        {")", ",7",  NULL, NULL},
+        {"!", "6",   NULL, NULL},
+        {".", "4",   NULL, NULL},
+        {":", "3",   NULL, NULL},
+        {";", "2",   NULL, NULL},
+        {",", "1",   NULL, NULL},
+        {"'", "'",   NULL, NULL},
+        {" ", " ",   NULL, NULL},
 
         // List terminator
-        NULL
+        {NULL}
     };
-    const char** sym;
-    size_t       len = strlen(str);
+    const LiteralRec* lit;
+    size_t            len = strlen(str);
 
-    // Check all known symbolic identifiers 
-    for (sym = symbols;  *sym;  sym += 2)
+    // Check all known literals
+    for (lit = literals;  lit->mpText;  ++lit)
     {
-        if (!starts_with(str, len, sym[0]))  continue;
-
-        // Found symbolic identifier, translate now
-        if (strcmp(sym[1], "--") == 0)
+        if (!starts_with(str, len, lit->mpText))  continue;
+        switch (style)
         {
-            // Escape dashes that follow a minus sign
-            int len = strlen(buf->mpStr);
-            if ((len >= 2) && (strcmp(buf->mpStr + len - 2, ";-") == 0))
-                append_char(buf, '#');
+            case STYLE_BOLD:  *fount = lit->mpBoldFount;    break;
+            default:          *fount = lit->mpNormalFount;  break;
         }
-        append_text(buf, sym[1]);
-
-        // Report successful translation
-        return "";
+        return lit->mpBraille;
     }
 
     // Report failed translation
@@ -1219,30 +1059,102 @@ static void
 translate_literal_text(int style, StrBuf* buf,
         int isIdentifier, const char* str)
 {
-    const char* fount = NULL;
+    const char* prev_fount;
+    const char* next_fount;
+    const char* next_str;
+    const char* next_letter;
+    const char* fount;
+    const char* letter;
 
+    // Ignore NULL pointers
     if (!str)  return;
-    while (*str)
+
+    // Setup starting condition
+    fount       = ";";
+    next_str    = str;
+    next_fount  = NULL;
+    next_letter = lookup_literal(style, next_str, &next_fount);
+
+    // Go through every Unicode character in the string
+    while (*next_str)
     {
-        const char* new_fount = NULL;
-        const char* next = next_utf8(str);
+        const char* out_fount;
 
-        // Perform translation
-        if (!new_fount)
-            new_fount = translate_latin_identifier(style, buf,
-                    isIdentifier, fount, str, next);
-        if (!new_fount)
-            new_fount = translate_greek_identifier(style, buf,
-                    isIdentifier, fount, str, next);
-        if (!new_fount)
-            new_fount = translate_symbolic_identifier(style, buf,
-                    isIdentifier, fount, str, next);
+        // Remember information of previous literal
+        prev_fount = fount;
 
-        // Remember new fount
-        fount = new_fount;
+        // Re-use information for current literal
+        str    = next_str;
+        fount  = next_fount;
+        letter = next_letter;
 
-        // Advance to next UTF-8 sequence
-        str = next;
+        // Lookup information about next literal
+        next_str    = next_utf8(str);
+        next_fount  = NULL;
+        next_letter = lookup_literal(style, next_str, &next_fount);
+
+        // Determine actual fount in output
+        out_fount = fount;
+        if (get_end_type(buf) != END_WITH_OTHER)
+        {
+            // Retain fount if confusion may arise
+            fount = NULL;
+        }
+        else if (strcmp(tail_of_buffer(buf, 1), "_") == 0)
+        {
+            // Retain fount if confusion may arise
+            fount = NULL;
+        }
+        else if ((strcmp(tail_of_buffer(buf, 2), ";-") == 0) &&
+                (strcmp(letter, "--") == 0))
+        {
+            // Escape dashes that follow a minus sign
+            out_fount = "#";
+        }
+        else if (isIdentifier && (strcmp(letter, "o") == 0))
+        {
+            // Retain fount for 'o' to distinguish from right bracket
+            fount = NULL;
+        }
+        else if (isIdentifier && (strcmp(letter, ":") == 0))
+        {
+            // Retain fount for 'η' to distinguish from overbar
+            fount = NULL;
+        }
+        else if (prev_fount != fount)  // Start of new fount
+        {
+            if (fount && (fount == next_fount))
+            {
+                // Use double letter fount for multi-letter sequence
+                if      (strcmp(fount, ";") == 0)  out_fount = ";";
+                else if (strcmp(fount, ",") == 0)  out_fount = ",,";
+                else if (strcmp(fount, "@") == 0)  out_fount = "@@";
+                else if (strcmp(fount, ".") == 0)  out_fount = "..";
+                else if (strcmp(fount, "^") == 0)  out_fount = "^^";
+                else if (strcmp(fount, "_") == 0)  out_fount = ",_";
+                else                               fount = ";";
+            }
+            else
+            {
+                // Forget fount for single letter
+                fount = ";";
+            }
+        }
+        else  // Continuation of same fount
+        {
+            // Reset to lowercase Latin fount at end of sequence
+            if (fount != next_fount)
+            {
+                if (fount)  fount = NULL;
+                else        fount = ";";
+            }
+            out_fount = NULL;
+        }
+
+        // Append translation to buffer now
+        append_text(buf, out_fount);
+        append_text(buf, letter);
+        set_end_type(buf, END_WITH_OTHER);
     }
 }
 
@@ -1295,10 +1207,8 @@ translate_mathematical_unit(int style, StrBuf* buf, mxml_node_t* x)
     // Translate textual unit
     if (get_end_type(buf) == END_WITH_UNIT_MI)
     {
-        char last = '\0';
-        len = strlen(buf->mpStr);
-        if (len > 0)  last = buf->mpStr[len - 1];
-        if (last != '/')  append_char(buf, '\'');
+        if (strcmp(tail_of_buffer(buf, 1), "/") != 0)
+            append_char(buf, '\'');
     }
     else
         append_char(buf, ' ');

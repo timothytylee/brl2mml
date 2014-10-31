@@ -118,6 +118,13 @@ void append_text(StrBuf* buf, const char* suffix);
   */
 void prepend_text(StrBuf* buf, const char* prefix);
 
+/** @brief Obtains pointer to tail of string buffer.
+    @return     Tail of string buffer containing at most @p count characters.
+    @param buf      Pointer to a string buffer.
+    @param count    Number of characters.
+  */
+const char* tail_of_buffer(StrBuf* buf, int count);
+
 /// @}
 
 
