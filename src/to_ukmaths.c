@@ -1,7 +1,7 @@
 /**********************************************************************
 *
 *  Filename:    to_ukmaths.c
-*  Description: Source file for UK Maths functions in libbrl2mml
+*  Description: Implementation of MathML to UK Maths translation
 *
 *  This file is covered by the GNU General Public License.
 *  See licence.txt for more details.
@@ -30,7 +30,7 @@
 #define IS_IDENTIFIER                   1
 
 
-/// @brief MathML style
+/// @brief MathML styles
 enum
 {
     STYLE_NORMAL = 0,
@@ -39,7 +39,7 @@ enum
     STYLE_FRAKTUR,
 };
 
-/// @brief StrBuf content identifier
+/// @brief StrBuf content identifiers
 enum
 {
     END_WITH_OTHER = 0,
@@ -50,10 +50,74 @@ enum
     END_WITH_LOWERED_DIGIT,
 };
 
+/// @brief Private data for MResizable string buffer
+typedef struct
+{
+    StrBuf** mpRows;        ///< Additional rows for matrix translation
+    int      mRowCount;     ///< Number of additional rows in array
+    int      mEndType;      ///< String buffer content identifier
+} MathData;
+
 
 /// Forward declare translate_math_node() for recursive invocation
 static long
 translate_math_node(int style, StrBuf* buf, mxml_node_t* x);
+
+
+/// @brief Private data destructor
+static void
+destroy_private_data(void* v)
+{
+    MathData* priv = (MathData*)v;
+
+    // Release additional rows
+    if (priv->mpRows)
+    {
+        int n;
+        for (n = priv->mRowCount;  n--;  )
+            destroy_buffer(priv->mpRows[n]);
+    }
+
+    // Clean up
+    free(priv);
+}
+
+
+/// @brief Gets end type in string buffer
+static int
+get_end_type(StrBuf* buf)
+{
+    if (buf && buf->mpPriv)
+    {
+        MathData* priv = (MathData*)buf->mpPriv;
+        return priv->mEndType;
+    }
+    return END_WITH_OTHER;
+}
+
+
+/// @brief Sets end type in string buffer
+static void
+set_end_type(StrBuf* buf, int endType)
+{
+    MathData* priv;
+
+    // Ignore invalid buffer
+    if (!buf)  return;
+
+    // Create private data if necessary
+    priv = buf->mpPriv;
+    if (!priv)
+    {
+        priv = (MathData*)calloc(1, sizeof(MathData));
+        if (!priv)  return;
+        buf->mpPriv     = priv;
+        buf->mpPrivDtor = destroy_private_data;
+    }
+
+    // Set end type
+    priv->mEndType = endType;
+}
 
 
 /// @brief Checks whether a string buffer has a trailing space
@@ -93,7 +157,7 @@ append_text_with_fount(StrBuf* buf, const char* text)
         if (len > 0)
         {
             char c = buf->mpStr[len - 1];
-            if ((buf->mpPriv != END_WITH_OTHER) ||
+            if ((get_end_type(buf) != END_WITH_OTHER) ||
                     (c == '_') || ((c >= 'a') && (c <= 'z')))
                 append_char(buf, ';');
         }
@@ -985,7 +1049,7 @@ translate_latin_identifier(int style, StrBuf* buf, int isIdentifier,
             if (isIdentifier && (letter == 'o'))  break;
 
             // Retain fount if confusion may arise
-            if (buf->mpPriv != END_WITH_OTHER)  break;
+            if (get_end_type(buf) != END_WITH_OTHER)  break;
 
             // Retain fount if previous fount is different
             if (prevFount)  break;
@@ -1219,8 +1283,7 @@ translate_mathematical_unit(int style, StrBuf* buf, mxml_node_t* x)
     for (u = units;  *u;  u += 2)
     {
         if (strcmp(text, u[0]) != 0)  continue;
-        if ((u[1][0] == '0') &&
-                (buf->mpPriv == (void*)END_WITH_LOWERED_DIGIT))
+        if ((u[1][0] == '0') && (get_end_type(buf) == END_WITH_LOWERED_DIGIT))
         {
             // Add '+' to prevent misinterpretation of degree as subscript
             append_char(buf, '+');
@@ -1230,7 +1293,7 @@ translate_mathematical_unit(int style, StrBuf* buf, mxml_node_t* x)
     }
 
     // Translate textual unit
-    if (buf->mpPriv == (void*)END_WITH_UNIT_MI)
+    if (get_end_type(buf) == END_WITH_UNIT_MI)
     {
         char last = '\0';
         len = strlen(buf->mpStr);
@@ -1248,7 +1311,7 @@ translate_mathematical_unit(int style, StrBuf* buf, mxml_node_t* x)
     }
 
     // Lowercase Latin fount sign not needed in translation
-    buf->mpPriv = (void*)END_WITH_OTHER;
+    set_end_type(buf, END_WITH_OTHER);
     translate_literal_text(style, buf, NOT_IDENTIFIER, text);
     return 1;
 }
@@ -1611,7 +1674,7 @@ translate_mtext(int style, StrBuf* buf, mxml_node_t* x)
     append_text(buf, "8");
 
     // Lowercase Latin fount sign not needed after opening quote
-    buf->mpPriv = (void*)END_WITH_OTHER;
+    set_end_type(buf, END_WITH_OTHER);
 
     // Translate each of the child text node
     for (x = mxmlGetFirstChild(x);  x;  x = mxmlGetNextSibling(x))
@@ -1764,7 +1827,7 @@ translate_math_node(int style, StrBuf* buf, mxml_node_t* x)
         long end_with;
         if (strcmp(name, rec->mpTag) != 0)  continue;
         end_with = rec->mpHandler(style, buf, x);
-        buf->mpPriv = (void*)end_with;
+        set_end_type(buf, end_with);
         return end_with;
     }
 }

@@ -1,7 +1,7 @@
 /**********************************************************************
 *
 *  Filename:    from_ukmaths.c
-*  Description: Source file for UK Maths functions in libbrl2mml
+*  Description: Implementation of UK Maths to MathML translation
 *
 *  This file is covered by the GNU General Public License.
 *  See licence.txt for more details.

@@ -41,13 +41,14 @@ resize_buffer(StrBuf* buf, size_t capacity)
 StrBuf*
 create_buffer()
 {
-    StrBuf* buf = calloc(1, sizeof(StrBuf));
+    StrBuf* buf = (StrBuf*)calloc(1, sizeof(StrBuf));
 
     // Initialize with a NULL-terminated empty string
-    buf->mpStr     = malloc(MINIMUM_GROWTH + 1);
-    buf->mpStr[0]  = '\0';
-    buf->mCapacity = MINIMUM_GROWTH;
-    buf->mpPriv    = NULL;
+    buf->mpStr      = malloc(MINIMUM_GROWTH + 1);
+    buf->mpStr[0]   = '\0';
+    buf->mCapacity  = MINIMUM_GROWTH;
+    buf->mpPriv     = NULL;
+    buf->mpPrivDtor = NULL;
     return buf;
 }
 
@@ -56,6 +57,7 @@ void
 destroy_buffer(StrBuf* buf)
 {
     // Release string data and actual structure
+    if (buf->mpPrivDtor)  buf->mpPrivDtor(buf->mpPriv);
     free(buf->mpStr);
     free(buf);
 }
@@ -76,9 +78,14 @@ wrap_str(char* str)
 char*
 unwrap_str(StrBuf* buf)
 {
-    // Release storage structure and return string data to caller
+    // Save string data
     char* str = buf->mpStr;
+
+    // Release storage structure
+    if (buf->mpPrivDtor)  buf->mpPrivDtor(buf->mpPriv);
     free(buf);
+
+    // Return string data to caller
     return str;
 }
 

@@ -38,12 +38,18 @@ char* brl2mml_from_ukmaths(const char*, int*);
 /// @}
 
 
+/// @brief @b StrBuf private data destructor
+typedef void(private_data_destructor_t)(void* priv);
+
+
 /// @brief Resizable string buffer
 typedef struct
 {
     char*  mpStr;       ///< NULL-terminated string data
     size_t mCapacity;   ///< Longest string that can be stored
     void*  mpPriv;      ///< Private data
+    private_data_destructor_t* mpPrivDtor;
+                        ///< Private data destructor
 } StrBuf;
 
 
