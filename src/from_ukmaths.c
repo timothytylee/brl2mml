@@ -2086,6 +2086,9 @@ parse_units(mxml_node_t* x, const char* brl, size_t len)
     ++brl;
     --len;
 
+    // Mathematical units must contain at least two characters
+    if (*brl && ((brl[1] == '\0') || (brl[1] == ' ')))  return 0;
+
     // Parse consecutive units
     for (;  len > 0;  ++count)
     {
