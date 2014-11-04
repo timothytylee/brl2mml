@@ -50,11 +50,11 @@ enum
     END_WITH_LOWERED_DIGIT,
 };
 
-/// @brief Private data for MResizable string buffer
+/// @brief Private data for resizable string buffer
 typedef struct
 {
-    StrBuf** mpRows;        ///< Additional rows for matrix translation
-    int      mRowCount;     ///< Number of additional rows in array
+    StrBuf** mpExtras;      ///< Extra rows for matrix translation
+    int      mExtraCount;     ///< Number of extra rows in matrix
     int      mEndType;      ///< String buffer content identifier
 } MathData;
 
@@ -71,11 +71,12 @@ destroy_private_data(void* v)
     MathData* priv = (MathData*)v;
 
     // Release additional rows
-    if (priv->mpRows)
+    if (priv->mpExtras)
     {
         int n;
-        for (n = priv->mRowCount;  n--;  )
-            destroy_buffer(priv->mpRows[n]);
+        for (n = priv->mExtraCount;  n--;  )
+            destroy_buffer(priv->mpExtras[n]);
+        free(priv->mpExtras);
     }
 
     // Clean up
@@ -83,16 +84,34 @@ destroy_private_data(void* v)
 }
 
 
+/// @brief Obtains private data from a string buffer
+static MathData*
+get_private_data(StrBuf* buf)
+{
+    // Ignore invalid buffer
+    if (!buf)  return NULL;
+
+    // Create private data if necessary
+    if (!buf->mpPriv)
+    {
+        buf->mpPriv = (MathData*)calloc(1, sizeof(MathData));
+        if (buf->mpPriv)
+        {
+            // Setup private data destructor
+            buf->mpPrivDtor = destroy_private_data;
+        }
+    }
+    return (MathData*)buf->mpPriv;
+}
+
+
 /// @brief Gets end type in string buffer
 static int
 get_end_type(StrBuf* buf)
 {
-    if (buf && buf->mpPriv)
-    {
-        MathData* priv = (MathData*)buf->mpPriv;
-        return priv->mEndType;
-    }
-    return END_WITH_OTHER;
+    MathData* priv = get_private_data(buf);
+    if (priv)  return priv->mEndType;
+    else       return END_WITH_OTHER;
 }
 
 
@@ -100,23 +119,99 @@ get_end_type(StrBuf* buf)
 static void
 set_end_type(StrBuf* buf, int endType)
 {
-    MathData* priv;
+    MathData* priv = get_private_data(buf);
+    if (priv)  priv->mEndType = endType;
+}
 
-    // Ignore invalid buffer
-    if (!buf)  return;
 
-    // Create private data if necessary
-    priv = buf->mpPriv;
-    if (!priv)
+/// @brief Gets the number of rows in string buffer
+static int
+get_row_count(StrBuf* buf)
+{
+    MathData* priv = get_private_data(buf);
+    if (priv)  return priv->mExtraCount + 1;
+    else       return 1;
+}
+
+
+/// @brief Ensures a string buffer has at least @p count number of rows
+static void
+set_minimum_row_count(StrBuf* buf, int count)
+{
+    // Add extra rows as needed
+    MathData* priv = get_private_data(buf);
+    if (!priv)  return;
+
+    // Do nothing if zero row is requested
+    if (!count)  return;
+
+    // Do nothing if there is sufficient capacity
+    if ((count - 1) <= priv->mExtraCount)  return;
+
+    // Expand pointer array
+    if (priv->mExtraCount == 0)
+        priv->mpExtras = (StrBuf**)calloc(count - 1, sizeof(StrBuf*));
+    else
+        priv->mpExtras = (StrBuf**)realloc(
+                priv->mpExtras, sizeof(StrBuf*) * (count - 1));
+
+    // Create new buffers
+    while ((count - 1) > priv->mExtraCount)
     {
-        priv = (MathData*)calloc(1, sizeof(MathData));
-        if (!priv)  return;
-        buf->mpPriv     = priv;
-        buf->mpPrivDtor = destroy_private_data;
+        priv->mpExtras[priv->mExtraCount] = create_buffer();
+        ++priv->mExtraCount;
     }
+}
 
-    // Set end type
-    priv->mEndType = endType;
+
+/// @brief Gets a row in a multi-line string buffer by its zero-based index
+static StrBuf*
+get_row(StrBuf* buf, int idx)
+{
+    MathData* priv = get_private_data(buf);
+
+    // Ensure there are sufficient number of rows in buffer
+    set_minimum_row_count(buf, idx + 1);
+
+    // row[0] is stored in original string buffer
+    if (idx == 0)  return buf;
+
+    // Otherwise return required row from string array
+    return priv->mpExtras[idx - 1];
+}
+
+
+/// @brief Pads all rows in buffer to same length
+static void
+equalize_rows(StrBuf* buf)
+{
+    int    n;
+    size_t len = strlen(get_row(buf, 0)->mpStr);
+    for (n = get_row_count(buf);  n--;  )
+    {
+        StrBuf* s = get_row(buf, n);
+        size_t  delta = len - strlen(s->mpStr);
+        while (delta--)  append_char(s, ' ');
+    }
+}
+
+
+/// @brief Appends multi-row string buffer to a string buffer
+static int
+append_buffer(StrBuf* buf, StrBuf* suffix)
+{
+    // Equalize sufficient number of rows in target buffer
+    int     count = get_row_count(suffix);
+    set_minimum_row_count(buf, count);
+    equalize_rows(buf);
+
+    // Append suffix
+    while (count--)
+    {
+        StrBuf* dst = get_row(buf, count);
+        StrBuf* src = get_row(suffix, count);
+        append_text(dst, src->mpStr);
+    }
 }
 
 
@@ -143,11 +238,11 @@ group_standalone_mi(mxml_node_t* x)
 }
 
 
-/// @brief Appends text with optional Latin fount in between if necessary
+/// @brief Appends buffer with optional Latin fount in between if necessary
 static void
-append_text_with_fount(StrBuf* buf, const char* text)
+append_buffer_with_fount(StrBuf* buf, StrBuf* suffix)
 {
-    char c = text[0];
+    char c = suffix->mpStr[0];
     if ((c >= 'a') && (c <= 'z'))
     {
         // New text starts with Latin character
@@ -163,8 +258,8 @@ append_text_with_fount(StrBuf* buf, const char* text)
         }
     }
 
-    // Append new text now
-    append_text(buf, text);
+    // Append suffix now
+    append_buffer(buf, suffix);
 }
 
 
@@ -473,7 +568,7 @@ translate_children(int style, StrBuf* buf, mxml_node_t* x)
 
     // Append translated content to buffer
     strip_trailing_space(tmp_buf);
-    append_text_with_fount(buf, tmp_buf->mpStr);
+    append_buffer_with_fount(buf, tmp_buf);
     destroy_buffer(tmp_buf);
     return end_with;
 }
@@ -506,7 +601,7 @@ translate_base(int style, StrBuf* buf, mxml_node_t* x)
     }
 
     // Append translated content to buffer
-    append_text_with_fount(buf, tmp_buf->mpStr);
+    append_buffer_with_fount(buf, tmp_buf);
     destroy_buffer(tmp_buf);
     return end_with;
 }
@@ -1266,12 +1361,218 @@ translate_menclose(int style, StrBuf* buf, mxml_node_t* x)
 }
 
 
+/// @brief Count the number of columns in a <mtr> node
+static void
+get_mtr_size(mxml_node_t* x, int* col)
+{
+    *col = 0;
+    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+        if (is_xml_element(x, "mtd"))  ++*col;
+}
+
+
+/// @brief Count the number of rows and columns in a <mtable> node
+static void
+get_mtable_size(mxml_node_t* x, int* maxRow, int* maxCol)
+{
+    *maxRow = 0;
+    *maxCol = 0;
+
+    // Count <mtr>
+    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+    {
+        if (is_xml_element(x, "mtr"))
+        {
+            mxml_node_t* y;
+
+            // Count <mtd> in row
+            int col = 0;
+            get_mtr_size(x, &col);
+
+            // Update dimension
+            ++*maxRow;
+            if (*maxCol < col)  *maxCol = col;
+        }
+    }
+}
+
+
+/// @brief Translates <mtable> cells and equalize cell widths for each column
+static void
+translate_cells(int style, mxml_node_t* x,
+        StrBuf** cells, int max_row, int max_col)
+{
+    int row;
+    int col;
+
+    // Process every <mtr>
+    for (row = 0;  x;  x = get_next_element(x))
+    {
+        mxml_node_t* y;
+        if (!is_xml_element(x, "mtr"))  continue;
+
+        // Process every <mtd>
+        for (col = 0, y = first_child_elem(x);  y;  y = get_next_element(y))
+        {
+            StrBuf*     cell = cells[row * max_col + col];
+            const char* str;
+            int         has_space;
+            if (!is_xml_element(y, "mtd"))  continue;
+
+            // Translate cell content
+            translate_children(style, cell, y);
+
+            // Add brackets if there are spaces in the translation
+            for (str = cell->mpStr;  *str;  ++str)
+            {
+                if (*str != ' ')  continue;
+                prepend_char(cell, '<');
+                append_char(cell, '>');
+                break;
+            }
+
+            // Increment column index
+            ++col;
+        }
+
+        // Increment row index
+        ++row;
+    }
+
+    // Equalize cell widths in each column
+    for (col = 0;  col < max_col;  ++col)
+    {
+        int has_prefix = 0;
+        int col_width = 0;
+
+        // Look for plus and minus prefixes
+        for (row = 0;  row < max_row;  ++row)
+        {
+            StrBuf*     cell = cells[row * max_col + col];
+            const char* str = cell->mpStr;
+            size_t      len = strlen(str);
+            if (starts_with(str, len, ";-") || starts_with(str, len, ";6"))
+            {
+                has_prefix = 1;
+                break;
+            }
+        }
+
+        // Indent cells to make plus and minus prefixes stand out
+        for (row = 0;  row < max_row;  ++row)
+        {
+            StrBuf*     cell = cells[row * max_col + col];
+            const char* str = cell->mpStr;
+            size_t      len = strlen(str);
+            if (has_prefix &&
+                    !starts_with(str, len, ";-") &&
+                    !starts_with(str, len, ";6"))
+            {
+                prepend_text(cell, "  ");
+                len += 2;
+            }
+
+            // Remember maximum column width
+            if (col_width < len)  col_width = len;
+        }
+
+        // Pad cells to the same width
+        for (row = 0;  row < max_row;  ++row)
+        {
+            StrBuf* cell = cells[row * max_col + col];
+            size_t  delta = col_width - strlen(cell->mpStr);
+            while (delta--)  append_char(cell, ' ');
+        }
+    }
+}
+
+
+/// @brief Translates a matrix given its size and the first <mtr> node
+static void
+translate_matrix(int style, StrBuf* buf,
+        mxml_node_t* mtr, int maxRow, int maxCol)
+{
+    StrBuf** cells;
+    int      row;
+    int      col;
+    int      n;
+
+    // Ignore invalid parameters
+    if (!mtr)  return;
+    if (maxRow <= 0)  return;
+    if (maxCol <= 0)  return;
+
+    // Create cell storage space
+    cells = (StrBuf**)calloc(maxRow * maxCol, sizeof(StrBuf*));
+    for (n = maxRow * maxCol;  n--;  )  cells[n] = create_buffer();
+
+    // Translate cells
+    translate_cells(style, mtr, cells, maxRow, maxCol);
+
+    // Prepare output buffer
+    set_minimum_row_count(buf, maxRow);
+    equalize_rows(buf);
+
+    // Append matrix to output buffer
+    for (row = 0;  row < maxRow;  ++row)
+    {
+        // Dot 123456 starts matrix
+        StrBuf* s = get_row(buf, row);
+        append_char(s, '=');
+
+        // Append cell content with space separators
+        for (col = 0;  col < maxCol;  ++col)
+        {
+            if (col > 0)  append_char(s, ' ');
+            append_text(s, cells[row * maxCol + col]->mpStr);
+        }
+
+        // Dot 123456 ends matrix
+        append_char(s, '=');
+    }
+
+    // Clean up
+    for (n = maxRow * maxCol;  n--;  )  destroy_buffer(cells[n]);
+    free(cells);
+}
+
+
 /// @brief Translates <mtable> node
 static long
 translate_mtable(int style, StrBuf* buf, mxml_node_t* x)
 {
-    // TODO: Implement it
+    // Determine matrix dimension
+    StrBuf** cells;
+    int      max_row = 0;
+    int      max_col = 0;
+    get_mtable_size(x, &max_row, &max_col);
+
+    // Perform translation
+    translate_matrix(style, buf, first_child_elem(x), max_row, max_col);
     return END_WITH_OTHER;
+}
+
+
+/// @brief Translates <mtr> node without outer <mtable>
+static long
+translate_mtr(int style, StrBuf* buf, mxml_node_t* x)
+{
+    // Determine row size
+    StrBuf** cells;
+    int      max_col = 0;
+    get_mtr_size(x, &max_col);
+
+    // Perform translation
+    translate_matrix(style, buf, x, 1, max_col);
+    return END_WITH_OTHER;
+}
+
+
+/// @brief Translates <mtd> node without outer <mtr>
+static long
+translate_mtd(int style, StrBuf* buf, mxml_node_t* x)
+{
+    return translate_children(style, buf, x);
 }
 
 
@@ -1571,9 +1872,9 @@ translate_mmultiscripts(int style, StrBuf* buf, mxml_node_t* x)
 }
 
 
-/// @brief Translates <mtext> node
+/// @brief Translates <mtext> and <merror> node
 static long
-translate_mtext(int style, StrBuf* buf, mxml_node_t* x)
+translate_mtext_merror(int style, StrBuf* buf, mxml_node_t* x)
 {
     const char* str;
 
@@ -1697,6 +1998,8 @@ translate_math_node(int style, StrBuf* buf, mxml_node_t* x)
         {"mstyle",        translate_mstyle            },
         {"menclose",      translate_menclose          },
         {"mtable",        translate_mtable            },
+        {"mtr",           translate_mtr               },
+        {"mtd",           translate_mtd               },
         {"mrow",          translate_mrow              },
         {"mpadded",       translate_mpadded           },
         {"mfenced",       translate_mfenced           },
@@ -1710,7 +2013,8 @@ translate_math_node(int style, StrBuf* buf, mxml_node_t* x)
         {"mover",         translate_msup_mover        },
         {"munderover",    translate_msubsup_munderover},
         {"mmultiscripts", translate_mmultiscripts     },
-        {"mtext",         translate_mtext             },
+        {"mtext",         translate_mtext_merror      },
+        {"merror",        translate_mtext_merror      },
         {"mo",            translate_mo                },
         {"mi",            translate_mi                },
         {"mn",            translate_mn                },
@@ -1748,6 +2052,7 @@ brl2mml_to_ukmaths(const char* mml, int* used)
 {
     mxml_node_t* x;
     mxml_node_t* elem;
+    int          n;
     StrBuf*      buf = create_buffer();
 
     // Parse XML into DOM tree
@@ -1760,6 +2065,14 @@ brl2mml_to_ukmaths(const char* mml, int* used)
 
     // Clean up
     mxmlDelete(x);
+
+    // Merge extra rows
+    for (n = 1;  n < get_row_count(buf);  ++n)
+    {
+        StrBuf* s = get_row(buf, n);
+        append_text(buf, "\n");
+        append_text(buf, s->mpStr);
+    }
 
     // Assume the XML data was fully consumed
     *used = strlen(mml);
