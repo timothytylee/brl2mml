@@ -355,8 +355,10 @@ static const char* overheads[] =
 {
     "¯",   ":",
     "ˆ",   "@:",
+    "‸",   "@:",
     "ˇ",   "@>",
     "~",   "^:",
+    "∼",   "^:",
     "···", "-'",
     "··",  "-",
     "·",   "'",
@@ -1210,6 +1212,9 @@ translate_literal_text(int style, StrBuf* buf,
         next_fount  = NULL;
         next_letter = lookup_literal(style, next_str, &next_fount);
 
+        // Skip literals that has no translation
+        if (!letter)  continue;
+
         // Determine actual fount in output
         out_fount = fount;
         if (get_end_type(buf) != END_WITH_OTHER)
@@ -1347,14 +1352,6 @@ translate_mathematical_unit(int style, StrBuf* buf, mxml_node_t* x)
 /// @brief Translates <math> node
 static long
 translate_math(int style, StrBuf* buf, mxml_node_t* x)
-{
-    return translate_children(style, buf, x);
-}
-
-
-/// @brief Translates <mstyle> node
-static long
-translate_mstyle(int style, StrBuf* buf, mxml_node_t* x)
 {
     return translate_children(style, buf, x);
 }
@@ -1651,8 +1648,6 @@ translate_mfenced(int style, StrBuf* buf, mxml_node_t* x)
 
         name  = mxmlGetElement(child);
         child_style = find_math_style(child_style, child);
-        if (strcmp(name, "mstyle") == 0)  continue;
-        if (strcmp(name, "mrow") == 0)  continue;
         if (strcmp(name, "mtable") == 0)
         {
             // No need to translate brackets surrounding <mtable>
@@ -2054,7 +2049,6 @@ translate_math_node(int style, StrBuf* buf, mxml_node_t* x)
     const HandlerRec handlers[] =
     {
         {"math",          translate_math              },
-        {"mstyle",        translate_mstyle            },
         {"menclose",      translate_menclose          },
         {"mtable",        translate_mtable            },
         {"mtr",           translate_mtr               },
@@ -2109,20 +2103,12 @@ translate_math_node(int style, StrBuf* buf, mxml_node_t* x)
 char*
 brl2mml_to_ukmaths(const char* mml, int* used)
 {
-    mxml_node_t* x;
-    mxml_node_t* elem;
-    int          n;
     StrBuf*      buf = create_buffer();
+    mxml_node_t* x = parse_mathml(mml);
+    int          n;
 
-    // Parse XML into DOM tree
-    x = mxmlNewElement(MXML_NO_PARENT, "xml");
-    mxmlLoadString(x, mml, MXML_NO_CALLBACK);
-
-    // Translate parsed elements
-    for (elem = first_child_elem(x);  elem;  elem = get_next_element(elem))
-        translate_math_node(STYLE_ITALIC, buf, elem);
-
-    // Clean up
+    // Perform translation and clean up
+    translate_children(STYLE_ITALIC, buf, x);
     mxmlDelete(x);
 
     // Merge extra rows

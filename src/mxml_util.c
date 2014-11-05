@@ -115,9 +115,19 @@ simplify_single_child_mrow(mxml_node_t* mrow)
     if (first_child_elem(mrow) == last_child_elem(mrow))
     {
         mxml_node_t* child = first_child_elem(mrow);
-        mxmlAdd(mxmlGetParent(mrow), MXML_ADD_BEFORE, mrow, child);
-        mxmlDelete(mrow);
-        mrow = child;
+        const char*  child_variant = mxmlElementGetAttr(child, "mathvariant");
+        const char*  mrow_variant = mxmlElementGetAttr(mrow, "mathvariant");
+        if (child)
+        {
+            // Inherit style
+            if (!child_variant && mrow_variant)
+                mxmlElementSetAttr(child, "mathvariant", mrow_variant);
+
+            // <mrow> with single child
+            mxmlAdd(mxmlGetParent(mrow), MXML_ADD_BEFORE, mrow, child);
+            mxmlDelete(mrow);
+            mrow = child;
+        }
     }
     return mrow;
 }
@@ -236,6 +246,57 @@ new_unit_element(mxml_node_t* x, const char* unit)
     mxmlElementSetAttr(mi, "mathvariant", "normal");
     mxmlNewText(mi, 0, unit);
     return mi;
+}
+
+
+
+/// @brief Recursively removes <mrow> containing only one child element
+static mxml_node_t*
+recursively_remove_redundant_mrow(mxml_node_t* x)
+{
+    mxml_node_t* y;
+
+    // Attempt to simplify <mrow>
+    const char*  name = mxmlGetElement(x);
+    if (name && (strcmp(name, "mrow") == 0))
+        x = simplify_single_child_mrow(x);
+
+    // Remove redundant <mrow> in child nodes
+    for (y = first_child_elem(x);  y;  y = get_next_element(y))
+        y = recursively_remove_redundant_mrow(y);
+
+    // Node might have been replaced, so return to caller
+    return x;
+}
+
+
+/// @brief Recursively replaces <mstyle> elements with <mrow>
+static void
+recursively_replace_mstyle(mxml_node_t* x)
+{
+    // Rename <mstyle> to <mrow>
+    const char* name = mxmlGetElement(x);
+    if (name && (strcmp(name, "mstyle") == 0))  mxmlSetElement(x, "mrow");
+
+    // Replace <mstyle> in child nodes
+    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+        recursively_replace_mstyle(x);
+}
+
+
+mxml_node_t*
+parse_mathml(const char* mml)
+{
+    // Parse XML into DOM tree
+    mxml_node_t* x = mxmlNewElement(MXML_NO_PARENT, "xml");
+    mxmlLoadString(x, mml, MXML_NO_CALLBACK);
+
+    // Clean up DOM tree
+    recursively_replace_mstyle(x);
+    recursively_remove_redundant_mrow(x);
+
+    // Return DOM tree to caller
+    return x;
 }
 
 

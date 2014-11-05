@@ -151,6 +151,11 @@ const char* next_utf8(const char* str);
 
 /// @name Utility functions for Mini-XML @{
 
+/** @brief Parses MathML into DOM tree.
+    @return     Pointer to new DOM tree.
+  */
+mxml_node_t* parse_mathml(const char* mml);
+
 /** @brief Gets the first child element.
     @return     Pointer to first child element.  @p NULL if there is none.
     @param x    Pointer to a DOM element.
