@@ -1418,9 +1418,10 @@ get_mtable_size(mxml_node_t* x, int* maxRow, int* maxCol)
 
 /// @brief Translates <mtable> cells and equalize cell widths for each column
 static void
-translate_cells(int style, mxml_node_t* x,
+translate_cells(int style, mxml_node_t* x, const char* terminator,
         StrBuf** cells, int max_row, int max_col)
 {
+    int terminator_has_bar = (terminator[strlen(terminator) - 1] == '_');
     int row;
     int col;
 
@@ -1448,6 +1449,13 @@ translate_cells(int style, mxml_node_t* x,
                 prepend_char(cell, '<');
                 append_char(cell, '>');
                 break;
+            }
+
+            // Use lowercase Latin fount in first column to avoid confusion
+            if (terminator_has_bar && (col == 0))
+            {
+                char c = cell->mpStr[0];
+                if ((c >= 'a') && (c <= 'z'))  prepend_char(cell, ';');
             }
 
             // Increment column index
@@ -1521,7 +1529,7 @@ translate_matrix(int style, StrBuf* buf, const char* terminator,
     for (n = maxRow * maxCol;  n--;  )  cells[n] = create_buffer();
 
     // Translate cells
-    translate_cells(style, mtr, cells, maxRow, maxCol);
+    translate_cells(style, mtr, terminator, cells, maxRow, maxCol);
 
     // Prepare output buffer
     set_minimum_row_count(buf, maxRow);
@@ -2112,6 +2120,7 @@ brl2mml_to_ukmaths(const char* mml, int* used)
     mxmlDelete(x);
 
     // Merge extra rows
+    equalize_rows(buf);
     for (n = 1;  n < get_row_count(buf);  ++n)
     {
         StrBuf* s = get_row(buf, n);
