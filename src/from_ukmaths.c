@@ -2730,38 +2730,6 @@ fix_text_spacing(mxml_node_t* x)
 }
 
 
-/// @brief Converts trigonometric operators from <mo> to <mi>
-static void
-fix_trigonometric_operators(mxml_node_t* x)
-{
-    mxml_node_t* elem = mxmlGetFirstChild(x);
-    for (;  elem;  elem = mxmlGetNextSibling(elem))
-    {
-        mxml_node_t* next;
-        const char*  mo;
-
-        // Convert only <mo>
-        if (!is_xml_element(elem, "mo"))  continue;
-        mo = get_element_text(elem);
-
-        // Convert only trigonometric operators
-        if (!is_trigonometric_operator(mo))  continue;
-
-        // Do nothing when next node is <mfenced>
-        next = mxmlGetNextSibling(elem);
-        if (next && is_xml_element(next, "mfenced"))  continue;
-
-        // Convert trigonometric operator to function 
-        mxmlSetElement(elem, "mi");
-
-        // Add an "apply function" operator after the trigonometric function
-        mxml_node_t* apply = mxmlNewElement(MXML_NO_PARENT, "mo");
-        mxmlNewText(apply, 0, UTF8_APPLY_FUNCTION);
-        mxmlAdd(x, MXML_ADD_AFTER, elem, apply);
-    }
-}
-
-
 /// @brief Removes unneeded round brackets from expression
 static void
 remove_unneeded_brackets(mxml_node_t* x)
@@ -3157,9 +3125,6 @@ postprocess_expr(mxml_node_t* x)
     // Pad <mtext> with <mspace>
     fix_text_spacing(x);
 
-    // Convert trigonometric operators from <mo> to <mi>
-    fix_trigonometric_operators(x);
-
     // Remove unneeded round brackets from expression
     remove_unneeded_brackets(x);
 }
@@ -3378,6 +3343,32 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
 }
 
 
+/// @brief Converts trigonometric operators from <mo> to <mi>
+static void
+recursively_convert_trigonometric_operators(mxml_node_t* x)
+{
+    // Rename trigonometric <mo> to <mi>
+    if (is_xml_element(x, "mo") &&
+            is_trigonometric_operator(get_element_text(x)))
+    {
+        const char* next = mxmlGetNextSibling(x);
+        mxmlSetElement(x, "mi");
+
+        // Add an "apply function" operator after the trigonometric function
+        if (next && !is_xml_element(next, "mfenced"))
+        {
+            mxml_node_t* apply = mxmlNewElement(MXML_NO_PARENT, "mo");
+            mxmlNewText(apply, 0, UTF8_APPLY_FUNCTION);
+            mxmlAdd(mxmlGetParent(x), MXML_ADD_AFTER, x, apply);
+        }
+    }
+
+    // Replace trigonometric operators in child nodes
+    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+        recursively_convert_trigonometric_operators(x);
+}
+
+
 char*
 brl2mml_from_ukmaths(const char* brl, int* used)
 {
@@ -3390,6 +3381,7 @@ brl2mml_from_ukmaths(const char* brl, int* used)
     mxmlElementSetAttr(math, "xmlns", "http://www.w3.org/1998/Math/MathML");
     mxmlElementSetAttr(math, "display", "block");
     *used = parse_expr(mrow, brl, len, BASE_EXPR, "");
+    recursively_convert_trigonometric_operators(mrow);
 
     // Consume end-of-line
     *used += is_brl_eol(brl + *used, len - *used); 

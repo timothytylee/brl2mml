@@ -293,7 +293,7 @@ recursively_convert_trigonometric_functions(mxml_node_t* x)
             is_trigonometric_operator(get_element_text(x)))
         mxmlSetElement(x, "mo");
 
-    // Replace <mstyle> in child nodes
+    // Replace trigonometric functions in child nodes
     for (x = first_child_elem(x);  x;  x = get_next_element(x))
         recursively_convert_trigonometric_functions(x);
 }
