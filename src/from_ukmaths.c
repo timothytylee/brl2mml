@@ -3348,19 +3348,37 @@ static void
 recursively_convert_trigonometric_operators(mxml_node_t* x)
 {
     // Rename trigonometric <mo> to <mi>
-    if (is_xml_element(x, "mo") &&
+    while (is_xml_element(x, "mo") &&
             is_trigonometric_operator(get_element_text(x)))
     {
-        const char* next = mxmlGetNextSibling(x);
+        mxml_node_t* parent;
+        mxml_node_t* next = mxmlGetNextSibling(x);
+        mxml_node_t* apply;
         mxmlSetElement(x, "mi");
 
-        // Add an "apply function" operator after the trigonometric function
-        if (next && !is_xml_element(next, "mfenced"))
-        {
-            mxml_node_t* apply = mxmlNewElement(MXML_NO_PARENT, "mo");
-            mxmlNewText(apply, 0, UTF8_APPLY_FUNCTION);
-            mxmlAdd(mxmlGetParent(x), MXML_ADD_AFTER, x, apply);
-        }
+        // Do nothing if there is not sibling element
+        if (!next)  break;
+
+        // Do nothing if a bracket follows the function
+        if (is_xml_element(next, "mfenced"))  break;
+
+        // Do nothing if the function is an index
+        parent = mxmlGetParent(x);
+        if (is_xml_element(parent, "mroot") ||
+                is_xml_element(parent, "msub") ||
+                is_xml_element(parent, "msup") ||
+                is_xml_element(parent, "msubsup") ||
+                is_xml_element(parent, "munder") ||
+                is_xml_element(parent, "mover") ||
+                is_xml_element(parent, "munderover") ||
+                is_xml_element(parent, "mmultiscripts"))
+            break;
+
+        // Add an "apply function" operator after the function
+        apply = mxmlNewElement(MXML_NO_PARENT, "mo");
+        mxmlNewText(apply, 0, UTF8_APPLY_FUNCTION);
+        mxmlAdd(mxmlGetParent(x), MXML_ADD_AFTER, x, apply);
+        break;
     }
 
     // Replace trigonometric operators in child nodes
