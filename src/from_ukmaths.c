@@ -78,31 +78,6 @@ is_latin_word(const char* str)
 }
 
 
-/// @brief Checks if a string is a trigonometric operator.
-static int
-is_trigonometric_operator(const char* str)
-{
-    const char* operators[] =
-    {
-        "sin",  "cos",   "tan",  "sec",  "cosec",  "cot",
-        "sinh", "cosh",  "tanh", "sech", "cosech", "coth",
-        "log",  "colog", "grad", "curl", "div",
-        "ln",   "exp",  
-
-        // List terminator
-        NULL
-    };
-    const char** op;
-
-    // Check all known trigonometric operators
-    for (op = operators;  *op;  ++op)
-        if (strcasecmp(str, *op) == 0)  return strlen(*op);
-
-    // Match failed
-    return 0;
-}
-
-
 /// @brief Checks for end-of-line and return its length
 static int
 is_brl_eol(const char* brl, size_t len)
@@ -2054,7 +2029,7 @@ parse_units(mxml_node_t* x, const char* brl, size_t len)
     if (!base)  return 0;
     while (mxmlGetElement(mxmlGetFirstChild(base)))
         base = mxmlGetFirstChild(base);
-    if ((strcmp(mxmlGetElement(base), "mn") != 0) &&
+    if (!is_xml_element(base, "mn") &&
             !is_identifier(base, "π") &&
             !is_identifier(base, "e"))
         return 0;
@@ -2334,7 +2309,7 @@ fix_fraction(mxml_node_t* x)
         int          diff_type = 0;
 
         // Process only <FRACTION> nodes
-        if (strcmp(mxmlGetElement(elem), "FRACTION") != 0)  continue;
+        if (!is_xml_element(elem, "FRACTION"))  continue;
 
         // Find denominator
         denom = mxmlGetNextSibling(elem);
@@ -2394,7 +2369,7 @@ fix_continued_fraction(mxml_node_t* x)
         mxml_node_t* mfrac;
 
         // Process only <CONT_FRAC> nodes
-        if (strcmp(mxmlGetElement(elem), "CONT_FRAC") != 0)  continue;
+        if (!is_xml_element(elem, "CONT_FRAC"))  continue;
 
         // Find numerator
         num = mxmlGetPrevSibling(elem);
@@ -2429,7 +2404,7 @@ fix_struck_out(mxml_node_t* x)
         mxml_node_t* expr;
 
         // Process only <STRUCK_OUT> nodes
-        if (strcmp(mxmlGetElement(elem), "STRUCK_OUT") != 0)  continue;
+        if (!is_xml_element(elem, "STRUCK_OUT"))  continue;
 
         // Find expression to strike out
         expr = mxmlGetNextSibling(elem);
@@ -2463,8 +2438,7 @@ fix_root(mxml_node_t* x)
         mxml_node_t* arg;
 
         // Process only <mroot> and <msqrt> nodes
-        if ((strcmp(mxmlGetElement(elem), "mroot") != 0) &&
-                (strcmp(mxmlGetElement(elem), "msqrt") != 0))
+        if (!is_xml_element(elem, "mroot") && !is_xml_element(elem, "msqrt"))
             continue;
 
         // Find argument
@@ -2496,7 +2470,7 @@ fix_sum_product(mxml_node_t* x)
         name = mxmlGetElement(arg);
 
         // Process only <mi> argument
-        if (strcmp(mxmlGetElement(arg), "mi") != 0)  continue;
+        if (!is_xml_element(arg, "mi"))  continue;
         mi = get_element_text(arg);
 
         // Convert only summation and product
@@ -2549,7 +2523,7 @@ fix_operator_scripts(mxml_node_t* x)
         name = mxmlGetElement(arg);
 
         // Process only <mo> argument
-        if (strcmp(mxmlGetElement(arg), "mo") != 0)  continue;
+        if (!is_xml_element(arg, "mo"))  continue;
         mo = get_element_text(arg);
 
         // Ignore trigonometric operator
@@ -2608,7 +2582,7 @@ fix_left_indices(mxml_node_t* x)
         }
 
         // Process only <LEFT_INDEX> argument
-        if (strcmp(mxmlGetElement(arg), "LEFT_INDEX") != 0)  continue;
+        if (!is_xml_element(arg, "LEFT_INDEX"))  continue;
 
         // Find the new owner of the indices
         owner = mxmlGetNextSibling(elem);
@@ -2690,7 +2664,7 @@ fix_implicit_separators(mxml_node_t* x)
     const char*  sep;
 
     // Make sure it is a <mfenced> node
-    if (strcmp(mxmlGetElement(x), "mfenced") != 0)  return;
+    if (!is_xml_element(x, "mfenced"))  return;
 
     // Insert explicit separators
     sep = mxmlElementGetAttr(x, "separators");
@@ -2731,11 +2705,11 @@ fix_text_spacing(mxml_node_t* x)
         mxml_node_t* sibling;
 
         // Pad only <mtext>
-        if (strcmp(mxmlGetElement(elem), "mtext") != 0)  continue;
+        if (!is_xml_element(elem, "mtext"))  continue;
 
         // Check for <mspace> before current element
         sibling = mxmlGetPrevSibling(elem);
-        if (sibling && strcmp(mxmlGetElement(sibling), "mspace") != 0)
+        if (sibling && !is_xml_element(sibling, "mspace"))
         {
             // Insert <mspace> before current element
             mxml_node_t* mspace = mxmlNewElement(MXML_NO_PARENT, "mspace");
@@ -2745,13 +2719,45 @@ fix_text_spacing(mxml_node_t* x)
 
         // Check for <mspace> after current element
         sibling = mxmlGetNextSibling(elem);
-        if (sibling && strcmp(mxmlGetElement(sibling), "mspace") != 0)
+        if (sibling && !is_xml_element(sibling, "mspace"))
         {
             // Insert <mspace> after current element
             mxml_node_t* mspace = mxmlNewElement(MXML_NO_PARENT, "mspace");
             mxmlElementSetAttr(mspace, "width", MSPACE_WIDTH);
             mxmlAdd(x, MXML_ADD_AFTER, elem, mspace);
         }
+    }
+}
+
+
+/// @brief Converts trigonometric operators from <mo> to <mi>
+static void
+fix_trigonometric_operators(mxml_node_t* x)
+{
+    mxml_node_t* elem = mxmlGetFirstChild(x);
+    for (;  elem;  elem = mxmlGetNextSibling(elem))
+    {
+        mxml_node_t* next;
+        const char*  mo;
+
+        // Convert only <mo>
+        if (!is_xml_element(elem, "mo"))  continue;
+        mo = get_element_text(elem);
+
+        // Convert only trigonometric operators
+        if (!is_trigonometric_operator(mo))  continue;
+
+        // Do nothing when next node is <mfenced>
+        next = mxmlGetNextSibling(elem);
+        if (next && is_xml_element(next, "mfenced"))  continue;
+
+        // Convert trigonometric operator to function 
+        mxmlSetElement(elem, "mi");
+
+        // Add an "apply function" operator after the trigonometric function
+        mxml_node_t* apply = mxmlNewElement(MXML_NO_PARENT, "mo");
+        mxmlNewText(apply, 0, UTF8_APPLY_FUNCTION);
+        mxmlAdd(x, MXML_ADD_AFTER, elem, apply);
     }
 }
 
@@ -2768,7 +2774,7 @@ remove_unneeded_brackets(mxml_node_t* x)
         int          is_fraction;
 
         // Process only <mfenced>
-        if (strcmp(mxmlGetElement(elem), "mfenced") != 0)  continue;
+        if (!is_xml_element(elem, "mfenced"))  continue;
 
         // Make sure it is enclosed in round brackets
         if (strcmp(mxmlElementGetAttr(elem, "open"), "(") != 0)  continue;
@@ -2898,7 +2904,7 @@ parse_struck_out(mxml_node_t* x, const char* brl, size_t len)
     
     // Dot 5 following <mfrac> is a differential operator separation sign
     elem = mxmlGetLastChild(x);
-    if (elem && (strcmp(mxmlGetElement(elem), "mfrac") == 0))  return 1;
+    if (elem && is_xml_element(elem, "mfrac"))  return 1;
 
     // Other it is a struck out code
     mxmlNewElement(x, "STRUCK_OUT");
@@ -3151,6 +3157,9 @@ postprocess_expr(mxml_node_t* x)
     // Pad <mtext> with <mspace>
     fix_text_spacing(x);
 
+    // Convert trigonometric operators from <mo> to <mi>
+    fix_trigonometric_operators(x);
+
     // Remove unneeded round brackets from expression
     remove_unneeded_brackets(x);
 }
@@ -3169,7 +3178,7 @@ end_term_in_bracket(mxml_node_t* x, mxml_node_t* first, mxml_node_t* last)
     mxml_node_t* result;
 
     // Implicit separator only supported inside <mfenced>
-    if (strcmp(mxmlGetElement(x), "mfenced") != 0)  return NULL;
+    if (!is_xml_element(x, "mfenced"))  return NULL;
 
     // Turn on automatic separators
     mxmlElementSetAttr(x, "separators", ",");
@@ -3206,7 +3215,7 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
     size_t       org_len = len;
     int          spc = 1;
     int          fount = FOUNT_LATIN_SMALL;
-    int          is_bracketed = (strcmp(mxmlGetElement(x), "mfenced") == 0);
+    int          is_bracketed = is_xml_element(x, "mfenced");
     mxml_node_t* prev_term = NULL;
 
     // Do nothing if braille is empty
@@ -3354,7 +3363,7 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
     if (mxmlGetLastChild(x))
     {
         mxml_node_t* last = mxmlGetLastChild(x);
-        if (strcmp(mxmlGetElement(last), "STRUCK_OUT") == 0)
+        if (is_xml_element(last, "STRUCK_OUT"))
             mxmlDelete(last);
     }
 

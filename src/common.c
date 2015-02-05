@@ -223,6 +223,30 @@ next_utf8(const char* str)
 }
 
 
+int
+is_trigonometric_operator(const char* str)
+{
+    const char* operators[] =
+    {
+        "sin",  "cos",   "tan",  "sec",  "cosec",  "cot",
+        "sinh", "cosh",  "tanh", "sech", "cosech", "coth",
+        "log",  "colog", "grad", "curl", "div",
+        "ln",   "exp",  
+
+        // List terminator
+        NULL
+    };
+    const char** op;
+
+    // Check all known trigonometric operators
+    for (op = operators;  *op;  ++op)
+        if (strcasecmp(str, *op) == 0)  return strlen(*op);
+
+    // Match failed
+    return 0;
+}
+
+
 void
 brl2mml_free(void* ptr)
 {

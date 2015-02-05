@@ -284,6 +284,21 @@ recursively_replace_mstyle(mxml_node_t* x)
 }
 
 
+/// @brief Recursively converts trigonometric functions to operators
+static void
+recursively_convert_trigonometric_functions(mxml_node_t* x)
+{
+    // Rename trigonometric <mi> to <mo>
+    if (is_xml_element(x, "mi") &&
+            is_trigonometric_operator(get_element_text(x)))
+        mxmlSetElement(x, "mo");
+
+    // Replace <mstyle> in child nodes
+    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+        recursively_convert_trigonometric_functions(x);
+}
+
+
 mxml_node_t*
 parse_mathml(const char* mml)
 {
@@ -294,6 +309,7 @@ parse_mathml(const char* mml)
     // Clean up DOM tree
     recursively_replace_mstyle(x);
     recursively_remove_redundant_mrow(x);
+    recursively_convert_trigonometric_functions(x);
 
     // Return DOM tree to caller
     return x;

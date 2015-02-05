@@ -558,12 +558,14 @@ translate_children(int style, StrBuf* buf, mxml_node_t* x)
     StrBuf* tmp_buf = create_buffer();
     long    end_with = END_WITH_OTHER;
 
-    // Remove <mspace> and <mphantom> nodes
+    // Remove <mspace>, <mphantom> and "apply function" <mo> nodes
     mxml_node_t* el = first_child_elem(x);
     while (el)
     {
         mxml_node_t* next = get_next_element(el);
-        if (is_xml_element(el, "mspace") || is_xml_element(el, "mphantom"))
+        if (is_xml_element(el, "mspace") ||
+                is_xml_element(el, "mphantom") ||
+                is_operator(el, UTF8_APPLY_FUNCTION))
             mxmlDelete(el);
         el = next;
     }

@@ -23,8 +23,9 @@
 #include "mxml.h"
 
 
-#define UTF8_COMBINING_OVERLINE         "\xcc\x85"  // U+0305
-#define UTF8_COMBINING_OVERDOT          "\xcc\x87"  // U+0307
+#define UTF8_COMBINING_OVERLINE         "\xcc\x85"      // U+0305
+#define UTF8_COMBINING_OVERDOT          "\xcc\x87"      // U+0307
+#define UTF8_APPLY_FUNCTION             "\xe2\x81\xa1"  // U+2061
 
 
 #ifdef __cplusplus
@@ -146,6 +147,12 @@ int starts_with(const char* str, size_t len, const char* text);
   */
 const char* next_utf8(const char* str);
 
+/** @brief Checks if a string is a trigonometric operator.
+    @return     Non-zero if the string is a trigonometric operator.
+    @return     Zero if the string is not a trigonometric operator.
+    @param str  NULL-terminated string to check.
+  */
+int is_trigonometric_operator(const char* str);
 /// @}
 
 
