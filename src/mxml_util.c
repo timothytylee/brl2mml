@@ -220,6 +220,21 @@ is_number(mxml_node_t* x, const char* num)
 }
 
 
+int
+is_item_separator(mxml_node_t* x)
+{
+    const char* mo;
+    if (!is_xml_element(x, "mo"))  return 0;
+
+    // Check for known separators
+    mo = get_element_text(x);
+    return ((strcmp(mo, ",") == 0) ||
+            (strcmp(mo, ";") == 0) ||
+            (strcmp(mo, ":") == 0) ||
+            (strcmp(mo, ".") == 0));
+}
+
+
 void
 remove_round_bracket(mxml_node_t* x)
 {

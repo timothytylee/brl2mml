@@ -251,6 +251,12 @@ int is_identifier(mxml_node_t* x, const char* id);
   */
 int is_number(mxml_node_t* x, const char* num);
 
+/** @brief Checks if a node is an item separating <mo>.
+    @return     Non-zero if the node matches.
+    @param x    Pointer to DOM element.
+  */
+int is_item_separator(mxml_node_t* x);
+
 /** @brief Converts <mfenced open="(" close=")"> into <mrow>
     @param x    Pointer to a DOM node that requires removal of round bracket.
   */

@@ -2644,6 +2644,40 @@ fix_left_indices(mxml_node_t* x)
 }
 
 
+/// @brief Splits <mtd> into multiple nodes using column markers
+static void
+split_by_column_marker(mxml_node_t* x)
+{
+    mxml_node_t* mark;
+    mxml_node_t* prev;
+    mxml_node_t* next;
+    mxml_node_t* split;
+
+    // Look for first column marker
+    for (mark = first_child_elem(x);  mark;  mark = get_next_element(mark))
+        if (is_xml_element(mark, "NEXT_COLUMN"))  break;
+    if (!mark)  return;
+
+    // Delete column marker
+    prev = get_prev_element(mark);
+    next = get_next_element(mark);
+    mxmlDelete(mark);
+
+    // Don't split if there is no more content
+    if (!next)  return;
+
+    // Split content before marker into a separate <mtd>
+    if (prev)
+    {
+        split = group_siblings("mtd", first_child_elem(x), prev);
+        mxmlAdd(mxmlGetParent(x), MXML_ADD_BEFORE, x, split);
+    }
+
+    // Continue splitting remaining content
+    split_by_column_marker(x);
+}
+
+
 /// @brief Converts elements from start to end into <mtr> and <mtd>
 static void
 wrap_matrix_row(mxml_node_t* start, mxml_node_t* end)
@@ -2653,15 +2687,43 @@ wrap_matrix_row(mxml_node_t* start, mxml_node_t* end)
     // Do nothing if there is no content in row
     if (!start)  return;
 
+    // Wrap all the terms inside an <mtr>
+    group_siblings("mtr", start, end);
+
     // Convert <mrow> terms into <mtd>
     for (elem = start;  elem;  elem = get_next_element(elem))
     {
-        if (is_xml_element(elem, "mrow"))  mxmlSetElement(elem, "mtd");
+        if (is_xml_element(elem, "mrow"))
+        {
+            mxmlSetElement(elem, "mtd");
+            split_by_column_marker(elem);
+        }
         if (elem == end)  break;
     }
+}
 
-    // Wrap all the terms inside an <mtr>
-    group_siblings("mtr", start, end);
+
+/// @brief Recursively remove column markers from non-matrix <mfenced>
+static void
+recursively_remove_column_marker(mxml_node_t* x)
+{
+    if (is_xml_element(x, "NEXT_COLUMN"))
+    {
+        // Current node is column marker, delete it
+        mxmlDelete(x);
+        return;
+    }
+    else
+    {
+        // Look for column markers in child nodes
+        x = first_child_elem(x);
+        while (x)
+        {
+            mxml_node_t* next = get_next_element(x);
+            recursively_remove_column_marker(x);
+            x = next;
+        }
+    }
 }
 
 
@@ -2679,7 +2741,12 @@ fix_matrix(mxml_node_t* x)
     // Make sure there is a <NEXT_ROW> node
     for (elem = first_child_elem(x);  elem;  elem = get_next_element(elem))
         if (is_xml_element(elem, "NEXT_ROW"))  break;
-    if (!elem)  return;
+    if (!elem)
+    {
+        // Remove column markers if it is not a matrix
+        recursively_remove_column_marker(x);
+        return;
+    }
 
     // Wrap children in <mtr> and <mtd>
     row_start = NULL;
@@ -3239,10 +3306,7 @@ end_term_in_bracket(mxml_node_t* x, mxml_node_t* first, mxml_node_t* last)
     // If last node is punctuation, exclude it from group
     if (!last)  last = mxmlGetLastChild(x);
     result = last;
-    if (is_operator(last, ",") ||
-            is_operator(last, ";") ||
-            is_operator(last, ":") ||
-            is_operator(last, "."))
+    if (is_item_separator(last))
         last = mxmlGetPrevSibling(last);
 
     // Group the nodes since previous comma into <mrow>
@@ -3315,7 +3379,7 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
 
             // Otherwise it ends current term inside a set
             prev_term = end_term_in_bracket(x, prev_term, NULL);
-            spc  = 1;
+            spc = 1;
         }
 
         // Space resets fount back to small Latin
@@ -3365,6 +3429,18 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
         if (!used && !isIndex)
             used = parse_plus_minus_index(x, brl, len, closeBrl);
 
+        // Try to parse explicit item separator
+        if (!used && (c == ' '))
+        {
+            mxml_node_t* last = mxmlGetLastChild(x);
+            if (is_item_separator(last))
+            {
+                // End current term inside a set
+                prev_term = end_term_in_bracket(x, prev_term, last);
+                used = 1;
+            }
+        }
+
         // Try to parse operator
         if (!used)
         {
@@ -3377,6 +3453,9 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
             {
                 spc = 1;
                 adj = 1;
+
+                // Add column marker for matrix
+                if (is_bracketed)  mxmlNewElement(x, "NEXT_COLUMN");
             }
 
             // Parse operators in index as if there were a leading space
@@ -3407,7 +3486,7 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
             // Dot 1256 begins a new row in matrix
             if (c == '\\')
             {
-                // Next row terminates superscript and subscript
+                // Row mark terminates superscript and subscript
                 if (isIndex)  break;
 
                 // Append a standalone <NEXT_ROW> term
