@@ -2644,17 +2644,84 @@ fix_left_indices(mxml_node_t* x)
 }
 
 
-/// @brief Checks whether an element contains an <mfrac>
-static int
-is_mfrac(mxml_node_t* x)
+/// @brief Converts elements from start to end into <mtr> and <mtd>
+static void
+wrap_matrix_row(mxml_node_t* start, mxml_node_t* end)
 {
-    for (;  x;  x = mxmlGetFirstChild(x))
+    mxml_node_t* elem;
+
+    // Do nothing if there is no content in row
+    if (!start)  return;
+
+    // Convert <mrow> terms into <mtd>
+    for (elem = start;  elem;  elem = get_next_element(elem))
     {
-        const char* name = mxmlGetElement(x);
-        if (!name)  break;
-        if (strcmp(name, "mfrac") == 0)  return 1;
+        if (is_xml_element(elem, "mrow"))  mxmlSetElement(elem, "mtd");
+        if (elem == end)  break;
     }
-    return 0;
+
+    // Wrap all the terms inside an <mtr>
+    group_siblings("mtr", start, end);
+}
+
+
+/// @brief Converts <mfenced> with <NEXT_ROW> into <mtable>, <mtr> and <mtd>
+static void
+fix_matrix(mxml_node_t* x)
+{
+    mxml_node_t* row_start;
+    mxml_node_t* row_end;
+    mxml_node_t* elem;
+
+    // Make sure it is a <mfenced> node
+    if (!is_xml_element(x, "mfenced"))  return;
+
+    // Make sure there is a <NEXT_ROW> node
+    for (elem = first_child_elem(x);  elem;  elem = get_next_element(elem))
+        if (is_xml_element(elem, "NEXT_ROW"))  break;
+    if (!elem)  return;
+
+    // Wrap children in <mtr> and <mtd>
+    row_start = NULL;
+    row_end   = NULL;
+    elem      = first_child_elem(x);
+    while (elem)
+    {
+        // Wrap elements up to <NEXT_ROW> inside <mtr>
+        if (is_xml_element(elem, "NEXT_ROW"))
+        {
+            mxml_node_t* marker = elem;
+
+            wrap_matrix_row(row_start, row_end);
+            row_start = NULL;
+            row_end   = NULL;
+
+            // Proceed to next element
+            elem = get_next_element(elem);
+
+            // Remove marker
+            mxmlDelete(marker);
+            continue;
+        }
+
+        // Remember start of current row
+        if (!row_start)  row_start = elem;
+
+        // Remember end of current row
+        row_end = elem;
+
+        // Proceed to next element
+        elem = get_next_element(elem);
+    }
+
+    // Wrap remaining elements inside <mtr>
+    wrap_matrix_row(row_start, row_end);
+
+    // Turn off implicit separator
+    mxmlElementSetAttr(x, "separators", "");
+
+    // Wrap child elements inside a <mtable>
+    group_siblings("mtable", mxmlGetFirstChild(x), mxmlGetLastChild(x));
 }
 
 
@@ -2662,7 +2729,7 @@ is_mfrac(mxml_node_t* x)
 static void
 fix_implicit_separators(mxml_node_t* x)
 {
-    const char*  sep;
+    const char* sep;
 
     // Make sure it is a <mfenced> node
     if (!is_xml_element(x, "mfenced"))  return;
@@ -2731,6 +2798,20 @@ fix_text_spacing(mxml_node_t* x)
 }
 
 
+/// @brief Checks whether an element contains an <mfrac>
+static int
+is_mfrac(mxml_node_t* x)
+{
+    for (;  x;  x = mxmlGetFirstChild(x))
+    {
+        const char* name = mxmlGetElement(x);
+        if (!name)  break;
+        if (strcmp(name, "mfrac") == 0)  return 1;
+    }
+    return 0;
+}
+
+
 /// @brief Removes unneeded round brackets from expression
 static void
 remove_unneeded_brackets(mxml_node_t* x)
@@ -2751,6 +2832,9 @@ remove_unneeded_brackets(mxml_node_t* x)
 
         // Retain bracket if there are multiple terms
         if (mxmlGetFirstChild(elem) != mxmlGetLastChild(elem))  continue;
+
+        // Retain bracket if it encloses a <mtable>
+        if (is_xml_element(mxmlGetFirstChild(elem), "mtable"))  continue;
 
         // Check for fraction in current term
         is_fraction = is_mfrac(elem);
@@ -3120,6 +3204,9 @@ postprocess_expr(mxml_node_t* x)
     // Convert <CONT_FRAC> into <mfrac>
     fix_continued_fraction(x);
 
+    // Convert <mfenced> with <NEXT_ROW> into <mtable>, <mtr> and <mtd>
+    fix_matrix(x);
+
     // Replace implicit separators with actual ones
     fix_implicit_separators(x);
 
@@ -3314,11 +3401,31 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
         // Try to parse literal text
         if (!used)  used = parse_literal_text(x, brl, len);
 
+        // Try to parse row mark
+        if (!used)
+        {
+            // Dot 1256 begins a new row in matrix
+            if (c == '\\')
+            {
+                // Next row terminates superscript and subscript
+                if (isIndex)  break;
+
+                // Append a standalone <NEXT_ROW> term
+                prev_term =
+                    end_term_in_bracket(x, prev_term, mxmlGetLastChild(x));
+                used = 1;
+                prev_term = mxmlNewElement(x, "NEXT_ROW");
+            }
+        }
+
         // Try to parse letter for current fount
         if (!used)  used = parse_letter(x, brl, len, fount);
 
         // Skip unrecognized braille
         if (!used)  used = 1;
+
+        // Determine whether next match has leading space
+        if (brl[used - 1] == ' ')  spc = 1;
 
         // Parse next braille segment
         brl += used;

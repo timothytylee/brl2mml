@@ -589,7 +589,7 @@ translate_children(int style, StrBuf* buf, mxml_node_t* x)
             }
         }
 
-        // Translate each child element separate
+        // Translate each child element separately
         end_with = translate_math_node(style, tmp_buf, x);
     }
 
