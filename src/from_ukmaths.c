@@ -1336,7 +1336,6 @@ parse_unspaced_operator(mxml_node_t* x, const char* brl, size_t len)
         "@!",   "∮",
         "@&",   "&",
         "@d",   "∂",
-        "=",    "∞",
         "_8",   "#",
         "_v",   "∐",
         "__",   "‖",
@@ -1646,7 +1645,7 @@ parse_operators(mxml_node_t* x, const char* brl, size_t len,
 
         // Dot 456-456 followed by Greek braille is vertical bar and Greek
         if (starts_with(brl, len, "__") &&
-                starts_with_brl_greek(brl + 2, len - 1))
+                starts_with_brl_greek(brl + 2, len - 2))
         {
             mxmlNewText(mxmlNewElement(x, "mo"), 0, "|");
             --len;
@@ -2738,15 +2737,14 @@ fix_matrix(mxml_node_t* x)
     // Make sure it is a <mfenced> node
     if (!is_xml_element(x, "mfenced"))  return;
 
-    // Make sure there is a <NEXT_ROW> node
-    for (elem = first_child_elem(x);  elem;  elem = get_next_element(elem))
-        if (is_xml_element(elem, "NEXT_ROW"))  break;
-    if (!elem)
+    // Make sure there is a "matrix" attribute
+    if (!mxmlElementGetAttr(x, "matrix"))
     {
         // Remove column markers if it is not a matrix
         recursively_remove_column_marker(x);
         return;
     }
+    mxmlElementDeleteAttr(x, "matrix");
 
     // Wrap children in <mtr> and <mtd>
     row_start = NULL;
@@ -2944,6 +2942,40 @@ parse_annuity(mxml_node_t* x, const char* brl, size_t len)
 }
 
 
+/// @brief Parses infinity symbol
+static int
+parse_infinity(mxml_node_t* x, const char* brl, size_t len,
+        const char* closeBrl)
+{
+    // Dot 123456 could be infinity symbol
+    while (starts_with(brl, len, "="))
+    {
+        int is_infinity = 0;
+
+        ++brl;
+        --len;
+        if (!len)  is_infinity = 1;
+        else
+        {
+            // Infinity symbol should not be followed by identifier
+            char c = *brl;
+            if ((c & 0x80) || strchr(" ]", c) ||
+                    starts_with(brl, len, ",1 ") ||
+                    starts_with(brl, len, closeBrl))
+                    is_infinity = 1;
+        }
+
+        if (is_infinity)
+        {
+            // Create <mo> node
+            mxmlNewText(mxmlNewElement(x, "mo"), 0, "∞");
+            return 1;
+        }
+    }
+    return 0;
+}
+
+
 /// @brief Letter fount sign definition
 typedef struct
 {
@@ -3086,12 +3118,14 @@ parse_plus_minus_index(mxml_node_t* x, const char* brl, size_t len,
 /// @brief Parses a bracketed expression
 static int
 parse_bracket_expr(mxml_node_t* x, const char* brl, size_t len,
-        const char* openAttr, const char* closeAttr, const char* closeBrl)
+        const char* openAttr, const char* closeAttr, const char* closeBrl,
+        int is_matrix)
 {
     mxml_node_t* mfenced = mxmlNewElement(x, "mfenced");
     mxmlElementSetAttr(mfenced, "open", openAttr);
     mxmlElementSetAttr(mfenced, "close", closeAttr);
     mxmlElementSetAttr(mfenced, "separators", "");
+    if (is_matrix)  mxmlElementSetAttr(mfenced, "matrix", "");
     return parse_expr(mfenced, brl, len, BASE_EXPR, closeBrl);
 }
 
@@ -3136,23 +3170,31 @@ parse_bracket(mxml_node_t* x, const char* brl, size_t len)
 
     // Dot 126 and 345 enclose round bracket expression
     if (*brl == '<')
-        return 1 + parse_bracket_expr(x, brl + 1, len - 1, "(", ")", ">");
+        return 1 + parse_bracket_expr(x, brl + 1, len - 1, "(", ")", ">", 0);
 
     // Dot 12356 and 23456 enclose square bracket expression
     if (*brl == '(')
-        return 1 + parse_bracket_expr(x, brl + 1, len - 1, "[", "]", ")");
+        return 1 + parse_bracket_expr(x, brl + 1, len - 1, "[", "]", ")", 0);
 
     // Dot 23456 and 12356 enclose outward-facing square bracket expression
     if (*brl == ')')
-        return 1 + parse_bracket_expr(x, brl + 1, len - 1, "]", "[", "(");
+        return 1 + parse_bracket_expr(x, brl + 1, len - 1, "]", "[", "(", 0);
 
     // Dot 246 and 135 enclose curly bracket expression
     if (*brl == '[')
-        return 1 + parse_bracket_expr(x, brl + 1, len - 1, "{", "}", "o");
+        return 1 + parse_bracket_expr(x, brl + 1, len - 1, "{", "}", "o", 0);
 
     // Dot 46-12356 and 46-23456 enclose angle bracket expression
     if (starts_with(brl, len, ".("))
-        return 2 + parse_bracket_expr(x, brl + 2, len - 2, "〈", "〉", ".)");
+        return 2 + parse_bracket_expr(x, brl + 2, len - 2, "〈", "〉", ".)", 0);
+
+    // Dot 123456 and 123456 enclose matrix
+    if (*brl == '=')
+        return 1 + parse_bracket_expr(x, brl + 1, len - 1, "[", "]", "=", 1);
+
+    // Dot 123456 and 123456 enclose matrix
+    if (*brl == '=')
+        return 1 + parse_bracket_expr(x, brl + 1, len - 1, "[", "]", "=", 1);
 
     // Nothing matched
     return 0;
@@ -3422,6 +3464,9 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
         // Try to parse annuity symbol
         if (!used)  used = parse_annuity(x, brl, len);
 
+        // Try to parse infinity symbol
+        if (!used)  used = parse_infinity(x, brl, len, closeBrl);
+
         // Try to parse bracket
         if (!used)  used = parse_bracket(x, brl, len);
 
@@ -3480,21 +3525,19 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
         // Try to parse literal text
         if (!used)  used = parse_literal_text(x, brl, len);
 
-        // Try to parse row mark
-        if (!used)
+        // Try to parse dot 1256 row marker in matrix
+        if (!used && (c == '\\'))
         {
-            // Dot 1256 begins a new row in matrix
-            if (c == '\\')
-            {
-                // Row mark terminates superscript and subscript
-                if (isIndex)  break;
+            // Row mark terminates superscript and subscript
+            if (isIndex)  break;
 
-                // Append a standalone <NEXT_ROW> term
-                prev_term =
-                    end_term_in_bracket(x, prev_term, mxmlGetLastChild(x));
-                used = 1;
-                prev_term = mxmlNewElement(x, "NEXT_ROW");
-            }
+            // Consume the row marker 
+            used = 1;
+            if (is_bracketed)  mxmlElementSetAttr(x, "matrix", "");
+
+            // Append a <NEXT_ROW> node
+            end_term_in_bracket(x, prev_term, mxmlGetLastChild(x));
+            prev_term = mxmlNewElement(x, "NEXT_ROW");
         }
 
         // Try to parse letter for current fount
