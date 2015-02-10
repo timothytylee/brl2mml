@@ -2738,12 +2738,7 @@ fix_matrix(mxml_node_t* x)
     if (!is_xml_element(x, "mfenced"))  return;
 
     // Make sure there is a "matrix" attribute
-    if (!mxmlElementGetAttr(x, "matrix"))
-    {
-        // Remove column markers if it is not a matrix
-        recursively_remove_column_marker(x);
-        return;
-    }
+    if (!mxmlElementGetAttr(x, "matrix"))  return;
     mxmlElementDeleteAttr(x, "matrix");
 
     // Wrap children in <mtr> and <mtd>
@@ -2784,6 +2779,9 @@ fix_matrix(mxml_node_t* x)
 
     // Turn off implicit separator
     mxmlElementSetAttr(x, "separators", "");
+
+    // Remove column markers
+    recursively_remove_column_marker(x);
 
     // Wrap child elements inside a <mtable>
     group_siblings("mtable", mxmlGetFirstChild(x), mxmlGetLastChild(x));
@@ -3483,6 +3481,9 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
                 // End current term inside a set
                 prev_term = end_term_in_bracket(x, prev_term, last);
                 used = 1;
+
+                // Add column marker for matrix
+                mxmlNewElement(x, "NEXT_COLUMN");
             }
         }
 
@@ -3500,7 +3501,7 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
                 adj = 1;
 
                 // Add column marker for matrix
-                if (is_bracketed)  mxmlNewElement(x, "NEXT_COLUMN");
+                mxmlNewElement(x, "NEXT_COLUMN");
             }
 
             // Parse operators in index as if there were a leading space
@@ -3534,6 +3535,37 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
             // Consume the row marker 
             used = 1;
             if (is_bracketed)  mxmlElementSetAttr(x, "matrix", "");
+            else
+            {
+                // Check for determinant or norms
+                mxml_node_t* elem = last_child_elem(x);
+                for (;  elem;  elem = get_prev_element(elem))
+                {
+                    if (is_operator(elem, "|") || is_operator(elem, "‖"))
+                        break;
+                }
+                if (elem)
+                {
+                    // Enclose existing items inside <mfenced>
+                    const char*  ends = get_element_text(elem);
+                    mxml_node_t* first = get_next_element(elem);
+                    mxml_node_t* last = last_child_elem(x);
+                    mxml_node_t* mfenced =
+                        group_siblings("mfenced", first, last);
+                    if      (strcmp(ends, "|") == 0)  closeBrl = "_";
+                    else if (strcmp(ends, "‖") == 0)  closeBrl = "__";
+                    x            = mfenced;
+                    is_bracketed = 1;
+                    prev_term    = last;
+                    mxmlElementSetAttr(mfenced, "open", ends);
+                    mxmlElementSetAttr(mfenced, "close", ends);
+                    mxmlElementSetAttr(mfenced, "separators", "");
+                    mxmlElementSetAttr(mfenced, "matrix", "");
+
+                    // Remove opening bracket
+                    mxmlDelete(elem);
+                }
+            }
 
             // Append a <NEXT_ROW> node
             end_term_in_bracket(x, prev_term, mxmlGetLastChild(x));
