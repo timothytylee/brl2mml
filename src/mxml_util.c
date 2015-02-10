@@ -137,9 +137,8 @@ simplify_single_child_mrow(mxml_node_t* mrow)
 mxml_node_t*
 apply_operator(mxml_node_t* x, const char* name, const char* op)
 {
-    mxml_node_t* mo = mxmlNewElement(MXML_NO_PARENT, "mo");
+    mxml_node_t* mo = new_text_element(MXML_NO_PARENT, "mo", op);
     mxml_node_t* outer;
-    mxmlNewText(mo, 0, op);
     mxmlAdd(mxmlGetParent(x), MXML_ADD_AFTER, x, mo);
     remove_round_bracket(x);
     return group_siblings(name, x, mo);
@@ -254,13 +253,21 @@ remove_round_bracket(mxml_node_t* x)
 
 
 mxml_node_t*
+new_text_element(mxml_node_t* x, const char* name, const char* text)
+{
+    mxml_node_t* el = mxmlNewElement(x, name);
+    mxmlNewText(el, 0, text);
+    return el;
+}
+
+
+mxml_node_t*
 new_unit_element(mxml_node_t* x, const char* unit)
 {
     mxml_node_t* mspace = mxmlNewElement(x, "mspace");
-    mxml_node_t* mi = mxmlNewElement(x, "mi");
+    mxml_node_t* mi = new_text_element(x, "mi", unit);
     mxmlElementSetAttr(mspace, "width", "0.25em");
     mxmlElementSetAttr(mi, "mathvariant", "normal");
-    mxmlNewText(mi, 0, unit);
     return mi;
 }
 

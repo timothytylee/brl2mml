@@ -301,7 +301,7 @@ parse_lowered_digits(mxml_node_t* x, const char* brl, size_t len)
     }
 
     // Create <mn> node
-    if (org_len > len)  mxmlNewText(mxmlNewElement(x, "mn"), 0, buf->mpStr);
+    if (org_len > len)  new_text_element(x, "mn", buf->mpStr);
     destroy_buffer(buf);
 
     // Report number of bytes used
@@ -583,8 +583,7 @@ parse_primes(mxml_node_t* x, const char* brl, size_t len)
     // Dot 4-35 starts prime
     if (starts_with(brl, len, "@9"))
     {
-        mxml_node_t* mo;
-        StrBuf*      buf = create_buffer();
+        StrBuf* buf = create_buffer();
 
         // Search for end of consecutive primes
         append_text(buf, "′");
@@ -595,13 +594,12 @@ parse_primes(mxml_node_t* x, const char* brl, size_t len)
         }
 
         // Create <mo> node
-        mo = mxmlNewElement(x, "mo");
         if (strcmp(buf->mpStr, "′′′") == 0)
-            mxmlNewText(mo, 0, "‴");
+            new_text_element(x, "mo", "‴");
         else if (strcmp(buf->mpStr, "′′") == 0)
-            mxmlNewText(mo, 0, "″");
+            new_text_element(x, "mo", "″");
         else
-            mxmlNewText(mo, 0, buf->mpStr);
+            new_text_element(x, "mo", buf->mpStr);
         destroy_buffer(buf);
     }
 
@@ -635,7 +633,7 @@ parse_asterisks(mxml_node_t* x, const char* brl, size_t len)
         if (base)
             apply_operator(base, "msup", buf->mpStr);
         else
-            mxmlNewText(mxmlNewElement(x, "mo"), 0, buf->mpStr);
+            new_text_element(x, "mo", buf->mpStr);
         destroy_buffer(buf);
     }
 
@@ -680,7 +678,7 @@ parse_overhead_symbol(mxml_node_t* x, const char* brl, size_t len)
             if (base)
                 apply_operator(base, "mover", oh[1]);
             else
-                mxmlNewText(mxmlNewElement(x, "mo"), 0, oh[1]);
+                new_text_element(x, "mo", oh[1]);
 
             // Report number of bytes used
             return strlen(oh[0]);
@@ -715,10 +713,9 @@ parse_numeric_index(mxml_node_t* x, const char* brl, size_t len,
     if (starts_with(brl, len, ";-") && is_brl_lowered_digit(c2))
     {
         mxml_node_t* expr = get_base_expr(x);
-        mxml_node_t* minus = mxmlNewElement(x, "mo");
+        mxml_node_t* minus = new_text_element(x, "mo", "−");
         size_t       used = 2 + parse_lowered_digits(x, brl + 2, len - 2);
         mxml_node_t* script = mxmlGetLastChild(x);
-        mxmlNewText(minus, 0, "−");
         script = group_siblings("mrow", minus, script);
         group_siblings(name, expr, script);
         return used;
@@ -1113,8 +1110,7 @@ parse_dot_56_operators(mxml_node_t* x, const char* brl, size_t len)
                 continue;
 
             // Create <mo> node
-            mo = mxmlNewElement(x, "mo");
-            mxmlNewText(mo, 0, op[1]);
+            mo = new_text_element(x, "mo", op[1]);
 
             // Create outer <mstyle> for bold symbol
             if (is_bold)
@@ -1293,16 +1289,7 @@ parse_word_operator(mxml_node_t* x, const char* brl, size_t len)
         }
 
         // Create <mo> node
-        if (buf->mpStr[0])
-        {
-            mxml_node_t* mo;
-            int          op_len = strlen(buf->mpStr);
-            int          inv = 0;
-
-            // Create <mo> node
-            mo = mxmlNewElement(x, "mo");
-            mxmlNewText(mo, 0, buf->mpStr);
-        }
+        if (buf->mpStr[0])  new_text_element(x, "mo", buf->mpStr);
 
         // Stop when there is no more braille to parse
         if (len == 0)  break;
@@ -1349,7 +1336,7 @@ parse_unspaced_operator(mxml_node_t* x, const char* brl, size_t len)
     // Choose single bar if what follows is a valid sign
     if (starts_with(brl, len, "__") && (len > 2) && strchr("/0[8v", brl[2]))
     {
-        mxmlNewText(mxmlNewElement(x, "mo"), 0, "|");
+        new_text_element(x, "mo", "|");
         return 1;
     }
 
@@ -1360,7 +1347,7 @@ parse_unspaced_operator(mxml_node_t* x, const char* brl, size_t len)
         if (!starts_with(brl, len, op[0]))  continue;
 
         // Create <mo> node
-        mxmlNewText(mxmlNewElement(x, "mo"), 0, op[1]);
+        new_text_element(x, "mo", op[1]);
 
         // Report number of bytes used
         return strlen(op[0]);
@@ -1501,8 +1488,7 @@ parse_pre_spaced_operator(mxml_node_t* x, const char* brl, size_t len)
         }
 
         // Create <mo> node
-        mo = mxmlNewElement(x, "mo");
-        mxmlNewText(mo, 0, op[1]);
+        mo = new_text_element(x, "mo", op[1]);
 
         // Create outer <mstyle> for bold symbol
         if (is_bold)
@@ -1583,7 +1569,7 @@ parse_pre_post_spaced_operator(mxml_node_t* x, const char* brl, size_t len,
         if (!op_len)  continue;
 
         // Create <mo> node
-        mxmlNewText(mxmlNewElement(x, "mo"), 0, op[1]);
+        new_text_element(x, "mo", op[1]);
 
         // Report number of bytes used
         return op_len;
@@ -1615,7 +1601,7 @@ parse_optional_pre_spaced_operator(mxml_node_t* x, const char* brl, size_t len)
         if (!starts_with(brl, len, op[0]))  continue;
 
         // Create <mo> node
-        mxmlNewText(mxmlNewElement(x, "mo"), 0, op[1]);
+        new_text_element(x, "mo", op[1]);
 
         // Report number of bytes used
         return strlen(op[0]);
@@ -1631,7 +1617,7 @@ parse_optional_pre_spaced_operator(mxml_node_t* x, const char* brl, size_t len)
 /// @brief Parses operators
 static int
 parse_operators(mxml_node_t* x, const char* brl, size_t len,
-        int spc, const char* closeBrl, int* extra_spc)
+        int spc, const char* closeBrl, int* extra_spc, int* opt_spc)
 {
     size_t org_len = len;
     int    count = 0;
@@ -1647,7 +1633,7 @@ parse_operators(mxml_node_t* x, const char* brl, size_t len,
         if (starts_with(brl, len, "__") &&
                 starts_with_brl_greek(brl + 2, len - 2))
         {
-            mxmlNewText(mxmlNewElement(x, "mo"), 0, "|");
+            new_text_element(x, "mo", "|");
             --len;
             break;
         }
@@ -1668,11 +1654,17 @@ parse_operators(mxml_node_t* x, const char* brl, size_t len,
 
         // Check for consecutive operators starting with dot 56
         if (!used && (spc || (count > 0)))
+        {
             used = parse_dot_56_operators(x, brl, len);
+            if (used && !count)  *opt_spc = spc;
+        }
 
         // Check for operators with optional leading space
         if (!used && (spc || (count > 0)))
+        {
             used = parse_optional_pre_spaced_operator(x, brl, len);
+            if (used && !count)  *opt_spc = spc;
+        }
 
         // Check for operators that require leading and trailing spaces
         if (!used && spc)
@@ -1765,7 +1757,7 @@ parse_letter(mxml_node_t* x, const char* brl, size_t len,
         if (!starts_with(brl, len, pct[0]))  continue;
 
         // Create <mo> node
-        mxmlNewText(mxmlNewElement(x, "mo"), 0, pct[1]);
+        new_text_element(x, "mo", pct[1]);
 
         // Report number of bytes used
         return strlen(pct[0]);
@@ -1778,7 +1770,7 @@ parse_letter(mxml_node_t* x, const char* brl, size_t len,
         if (!starts_with(brl, len, id[0]))  continue;
 
         // Create <mo> node
-        mxmlNewText(mxmlNewElement(x, "mi"), 0, id[1]);
+        new_text_element(x, "mi", id[1]);
 
         // Report number of bytes used
         return strlen(id[0]);
@@ -1819,8 +1811,7 @@ parse_letter(mxml_node_t* x, const char* brl, size_t len,
     }
 
     // Create <mi> node
-    mi = mxmlNewElement(x, "mi");
-    mxmlNewText(mi, 0, text);
+    mi = new_text_element(x, "mi", text);
 
     // Create outer <mstyle> for bold letter
     if (is_bold)
@@ -2124,23 +2115,17 @@ is_extendable_node(mxml_node_t* x)
     if (!x)  return 0;
     name = mxmlGetElement(x);
 
-    // Do actual check now
-    if (strcmp(name, "mroot") == 0)
-    {
-        // Roots cannot be concatenated
-        return 0;
-    }
-    else if (strcmp(name, "msqrt") == 0)
-    {
-        // Square roots cannot be concatenated
-        return 0;
-    }
-    else if (strcmp(name, "mo") != 0)
-    {
-        // Nodes which are not operators can be concatenated
-        return 1;
-    }
-    else
+    // Markers cannot be concatenated
+    if (strcmp(name, "MARKER") == 0)  return 0;
+
+    // Roots cannot be concatenated
+    if (strcmp(name, "mroot") == 0)  return 0;
+
+    // Square roots cannot be concatenated
+    if (strcmp(name, "msqrt") == 0)  return 0;
+
+    // Some operators can be concatenated
+    if (strcmp(name, "mo") == 0)
     {
         const char* mo = get_element_text(x);
 
@@ -2168,6 +2153,9 @@ is_extendable_node(mxml_node_t* x)
         // All other operators cannot be concatenated
         return 0;
     }
+
+    // Anything else can be concatenated
+    return 1;
 }
 
 
@@ -2412,7 +2400,7 @@ fix_struck_out(mxml_node_t* x)
         {
             mxml_node_t* menclose;
 
-            // Find inner most item to strike out
+            // Find inner most node to strike out
             expr = bypass_style_and_indices(expr);
 
             // Perform conversion
@@ -2428,7 +2416,7 @@ fix_struck_out(mxml_node_t* x)
 }
 
 
-/// @brief Moves first item following <mroot> and <msqrt> into element
+/// @brief Moves first node following <mroot> and <msqrt> into element
 static void
 fix_root(mxml_node_t* x)
 {
@@ -2637,99 +2625,40 @@ fix_left_indices(mxml_node_t* x)
         fixed = 1;
     }
 
-    // Remove round bracket around single item
+    // Remove round bracket around single node
     if (fixed && (mxmlGetFirstChild(x) == mxmlGetLastChild(x)))
         remove_round_bracket(x);
 }
 
 
-/// @brief Splits <mtd> into multiple nodes using column markers
+/// @brief Recursively remove markers from a DOM tree
 static void
-split_by_column_marker(mxml_node_t* x)
+recursively_remove_markers(mxml_node_t* x)
 {
-    mxml_node_t* mark;
-    mxml_node_t* prev;
-    mxml_node_t* next;
-    mxml_node_t* split;
-
-    // Look for first column marker
-    for (mark = first_child_elem(x);  mark;  mark = next_elem(mark))
-        if (is_xml_element(mark, "NEXT_COLUMN"))  break;
-    if (!mark)  return;
-
-    // Delete column marker
-    prev = prev_elem(mark);
-    next = next_elem(mark);
-    mxmlDelete(mark);
-
-    // Don't split if there is no more content
-    if (!next)  return;
-
-    // Split content before marker into a separate <mtd>
-    if (prev)
+    if (is_xml_element(x, "MARKER"))
     {
-        split = group_siblings("mtd", first_child_elem(x), prev);
-        mxmlAdd(mxmlGetParent(x), MXML_ADD_BEFORE, x, split);
-    }
-
-    // Continue splitting remaining content
-    split_by_column_marker(x);
-}
-
-
-/// @brief Converts elements from start to end into <mtr> and <mtd>
-static void
-wrap_matrix_row(mxml_node_t* start, mxml_node_t* end)
-{
-    mxml_node_t* el;
-
-    // Do nothing if there is no content in row
-    if (!start)  return;
-
-    // Wrap all the terms inside an <mtr>
-    group_siblings("mtr", start, end);
-
-    // Convert <mrow> terms into <mtd>
-    for (el = start;  el;  el = next_elem(el))
-    {
-        if (is_xml_element(el, "mrow"))
-        {
-            mxmlSetElement(el, "mtd");
-            split_by_column_marker(el);
-        }
-        if (el == end)  break;
-    }
-}
-
-
-/// @brief Recursively remove column markers from non-matrix <mfenced>
-static void
-recursively_remove_column_marker(mxml_node_t* x)
-{
-    if (is_xml_element(x, "NEXT_COLUMN"))
-    {
-        // Current node is column marker, delete it
+        // Delete marker nodes
         mxmlDelete(x);
         return;
     }
-    else
+
+    // Look for markers in child nodes
+    x = first_child_elem(x);
+    while (x)
     {
-        // Look for column markers in child nodes
-        x = first_child_elem(x);
-        while (x)
-        {
-            mxml_node_t* next = next_elem(x);
-            recursively_remove_column_marker(x);
-            x = next;
-        }
+        mxml_node_t* next = next_elem(x);
+        recursively_remove_markers(x);
+        x = next;
     }
 }
 
 
-/// @brief Converts <mfenced> with <NEXT_ROW> into <mtable>, <mtr> and <mtd>
+/// @brief Converts <mfenced> with "matrix" attr into <mtable>, <mtr> and <mtd>
 static void
 fix_matrix(mxml_node_t* x)
 {
+    mxml_node_t* cell_start;
+    mxml_node_t* cell_end;
     mxml_node_t* row_start;
     mxml_node_t* row_end;
     mxml_node_t* el;
@@ -2741,47 +2670,71 @@ fix_matrix(mxml_node_t* x)
     if (!mxmlElementGetAttr(x, "matrix"))  return;
     mxmlElementDeleteAttr(x, "matrix");
 
-    // Wrap children in <mtr> and <mtd>
-    row_start = NULL;
-    row_end   = NULL;
-    el      = first_child_elem(x);
+    // Remove implicit separators to avoid being treated as a set
+    mxmlElementSetAttr(el, "separators", "");
+
+    // Group cells based on column and row markers
+    cell_start = NULL;
+    cell_end   = NULL;
+    row_start  = NULL;
+    row_end    = NULL;
+    el = first_child_elem(x);
     while (el)
     {
-        // Wrap elements up to <NEXT_ROW> inside <mtr>
-        if (is_xml_element(el, "NEXT_ROW"))
+        mxml_node_t* next = next_elem(el);
+
+        if (is_xml_element(el, "MARKER"))
         {
-            mxml_node_t* marker = el;
+            // Group content of current cell
+            if (cell_start)
+            {
+                mxml_node_t* cell =
+                    group_siblings("mtd", cell_start, cell_end);
 
-            wrap_matrix_row(row_start, row_end);
-            row_start = NULL;
-            row_end   = NULL;
+                // Update extent of current row
+                if (!row_start)  row_start = cell;
+                row_end = cell;
+            }
 
-            // Proceed to next element
-            el = next_elem(el);
+            // Prepare for next cell
+            cell_start = NULL;
+            cell_end   = NULL;
 
-            // Remove marker
-            mxmlDelete(marker);
-            continue;
+            // Handle row marker
+            if (strcmp(get_element_text(el), "row") == 0)
+            {
+                // Group content of current row
+                if (row_start)  group_siblings("mtr", row_start, row_end);
+
+                // Prepare for next row
+                row_start  = NULL;
+                row_end    = NULL;
+            }
+
+            // Delete marker
+            mxmlDelete(el);
+        }
+        else
+        {
+            // Update extent of current cell
+            if (!cell_start)  cell_start = el;
+            cell_end = el;
         }
 
-        // Remember start of current row
-        if (!row_start)  row_start = el;
-
-        // Remember end of current row
-        row_end = el;
-
-        // Proceed to next element
-        el = next_elem(el);
+        // Advance to next element
+        el = next;
     }
 
-    // Wrap remaining elements inside <mtr>
-    wrap_matrix_row(row_start, row_end);
+    // Group content of last cell
+    if (cell_start)
+    {
+        mxml_node_t* cell = group_siblings("mtd", cell_start, cell_end);
+        if (!row_start)  row_start = cell;
+        row_end = cell;
+    }
 
-    // Turn off implicit separator
-    mxmlElementSetAttr(x, "separators", "");
-
-    // Remove column markers
-    recursively_remove_column_marker(x);
+    // Group content of last row
+    if (row_start)  group_siblings("mtr", row_start, row_end);
 
     // Wrap child elements inside a <mtable>
     group_siblings("mtable", mxmlGetFirstChild(x), mxmlGetLastChild(x));
@@ -2792,37 +2745,86 @@ fix_matrix(mxml_node_t* x)
 static void
 fix_implicit_separators(mxml_node_t* x)
 {
-    const char* sep;
+    mxml_node_t* term_start;
+    mxml_node_t* term_end;
+    mxml_node_t* el;
+    const char*  sep;
 
     // Make sure it is a <mfenced> node
     if (!is_xml_element(x, "mfenced"))  return;
 
-    // Insert explicit separators
+    // Make sure implicit separators are in use
     sep = mxmlElementGetAttr(x, "separators");
-    if (strlen(sep) > 0)
+    if (!sep)  return;
+    if (!strlen(sep))  return;
+
+    // Group terms based on column markers and insert separators
+    term_start = NULL;
+    term_end   = NULL;
+    el         = first_child_elem(x);
+    while (el)
     {
-        mxml_node_t* el = mxmlGetFirstChild(x);
-        for (;  el;  el = mxmlGetNextSibling(el))
+        mxml_node_t* next = next_elem(el);
+
+        if (is_xml_element(el, "MARKER") &&
+                (strcmp(get_element_text(el), "term") == 0))
         {
-            mxml_node_t* next;
+            // Handle term marker
+            int has_separator = 0;
 
-            // Do nothing when current node is already an operator
-            if (is_operator(el, NULL))  continue;
+            // Handle implicit item separator
+            if (is_item_separator(term_end))
+            {
+                if (term_start == term_end)
+                {
+                    // There is nothing before the separator, ignore term
+                    term_start = NULL;
+                    term_end   = NULL;
+                }
+                else
+                {
+                    // Exclude implicit item separator from the term
+                    term_end = prev_elem(term_end);
+                    has_separator = 1;
+                }
+            }
 
-            // Do nothing when next node is already an operator
-            next = mxmlGetNextSibling(el);
-            if (!next)  break;
-            if (is_operator(next, NULL))  continue;
+            // Group content of current term
+            if (term_start)
+            {
+                if (term_start != term_end)
+                    group_siblings("mrow", term_start, term_end);
 
-            // Otherwise insert a separator between current node and next node
-            mxml_node_t* mo = mxmlNewElement(MXML_NO_PARENT, "mo");
-            mxmlNewText(mo, 0, sep);
-            mxmlAdd(x, MXML_ADD_AFTER, el, mo);
+                // Make sure an item separator exists
+                if (next && !has_separator)
+                {
+                    mxml_node_t* mo =
+                        new_text_element(MXML_NO_PARENT, "mo", sep);
+                    mxmlAdd(x, MXML_ADD_BEFORE, next, mo);
+                }
+            }
+
+            // Delete column marker
+            mxmlDelete(el);
+
+            // Prepare for next term
+            term_start = NULL;
+            term_end   = NULL;
+        }
+        else
+        {
+            // Update extent of current term
+            if (!term_start)  term_start = el;
+            term_end = el;
         }
 
-        // Turn off implicit separator
-        mxmlElementSetAttr(x, "separators", "");
+        // Advance to next element
+        el = next;
     }
+
+    // Group content of last term
+    if (term_start && (term_start != term_end))
+        group_siblings("mrow", term_start, term_end);
 }
 
 
@@ -2840,7 +2842,8 @@ fix_text_spacing(mxml_node_t* x)
 
         // Check for <mspace> before current element
         sibling = mxmlGetPrevSibling(el);
-        if (sibling && !is_xml_element(sibling, "mspace"))
+        if (sibling && !is_xml_element(sibling, "mspace") &&
+                !is_item_separator(sibling))
         {
             // Insert <mspace> before current element
             mxml_node_t* mspace = mxmlNewElement(MXML_NO_PARENT, "mspace");
@@ -2850,7 +2853,8 @@ fix_text_spacing(mxml_node_t* x)
 
         // Check for <mspace> after current element
         sibling = mxmlGetNextSibling(el);
-        if (sibling && !is_xml_element(sibling, "mspace"))
+        if (sibling && !is_xml_element(sibling, "mspace") &&
+                !is_item_separator(sibling))
         {
             // Insert <mspace> after current element
             mxml_node_t* mspace = mxmlNewElement(MXML_NO_PARENT, "mspace");
@@ -2888,6 +2892,13 @@ remove_unneeded_brackets(mxml_node_t* x)
 
         // Process only <mfenced>
         if (!is_xml_element(el, "mfenced"))  continue;
+
+        // Retain round brackets around sets
+        if (strlen(mxmlElementGetAttr(el, "separators")) > 0)
+        {
+            mxmlElementSetAttr(el, "separators", "");
+            continue;
+        }
 
         // Make sure it is enclosed in round brackets
         if (strcmp(mxmlElementGetAttr(el, "open"), "(") != 0)  continue;
@@ -2966,7 +2977,7 @@ parse_infinity(mxml_node_t* x, const char* brl, size_t len,
         if (is_infinity)
         {
             // Create <mo> node
-            mxmlNewText(mxmlNewElement(x, "mo"), 0, "∞");
+            new_text_element(x, "mo", "∞");
             return 1;
         }
     }
@@ -3160,7 +3171,7 @@ parse_bracket(mxml_node_t* x, const char* brl, size_t len)
         if (!starts_with(brl, len, sym[0]))  continue;
 
         // Create <mo> node
-        mxmlNewText(mxmlNewElement(x, "mo"), 0, sym[1]);
+        new_text_element(x, "mo", sym[1]);
 
         // Report number of bytes used
         return strlen(sym[0]);
@@ -3278,7 +3289,7 @@ parse_literal_text(mxml_node_t* x, const char* brl, size_t len)
     }
 
     // Create <mtext> node
-    mxmlNewText(mxmlNewElement(x, "mtext"), 0, buf->mpStr);
+    new_text_element(x, "mtext", buf->mpStr);
     destroy_buffer(buf);
 
     // Report number of bytes used
@@ -3311,56 +3322,20 @@ postprocess_expr(mxml_node_t* x)
     // Convert <CONT_FRAC> into <mfrac>
     fix_continued_fraction(x);
 
-    // Convert <mfenced> with <NEXT_ROW> into <mtable>, <mtr> and <mtd>
+    // Convert <mfenced> with "matrix" attr into <mtable>, <mtr> and <mtd>
     fix_matrix(x);
 
     // Replace implicit separators with actual ones
     fix_implicit_separators(x);
+
+    // Remove column and row markers
+    recursively_remove_markers(x);
 
     // Pad <mtext> with <mspace>
     fix_text_spacing(x);
 
     // Remove unneeded round brackets from expression
     remove_unneeded_brackets(x);
-}
-
-
-/** @brief Ends current term in bracket.
-    @return     Pointer to element containing @p last.
-    @param x        Pointer to outer element.
-    @param first    Predecessor to first node in current term.  @p NULL means
-                    first child.
-    @param last     Last node in current term.  @p NULL means last child.
-  */
-static mxml_node_t*
-end_term_in_bracket(mxml_node_t* x, mxml_node_t* first, mxml_node_t* last)
-{
-    mxml_node_t* result;
-
-    // Implicit separator only supported inside <mfenced>
-    if (!is_xml_element(x, "mfenced"))  return NULL;
-
-    // Turn on automatic separators
-    mxmlElementSetAttr(x, "separators", ",");
-
-    // If last node is punctuation, exclude it from group
-    if (!last)  last = mxmlGetLastChild(x);
-    result = last;
-    if (is_item_separator(last))
-        last = mxmlGetPrevSibling(last);
-
-    // Group the nodes since previous comma into <mrow>
-    if (!first)  first = mxmlGetFirstChild(x);
-    else         first = mxmlGetNextSibling(first);
-    if (first && last)
-    {
-        mxml_node_t* mrow = group_siblings("mrow", first, last);
-        postprocess_expr(mrow);
-        if (result == last)  result = mrow;
-    }
-
-    // Return last element of enclosed terms
-    return result;
 }
 
 
@@ -3373,7 +3348,6 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
     int          spc = 1;
     int          fount = FOUNT_LATIN_SMALL;
     int          is_bracketed = is_xml_element(x, "mfenced");
-    mxml_node_t* prev_term = NULL;
 
     // Do nothing if braille is empty
     if (!len)  return 0;
@@ -3417,8 +3391,8 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
             // End-of-line terminates an open expression
             if (!is_bracketed)  break;
 
-            // Otherwise it ends current term inside a set
-            prev_term = end_term_in_bracket(x, prev_term, NULL);
+            // Mark the start of next term
+            new_text_element(x, "MARKER", "term");
             spc = 1;
         }
 
@@ -3472,26 +3446,12 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
         if (!used && !isIndex)
             used = parse_plus_minus_index(x, brl, len, closeBrl);
 
-        // Try to parse explicit item separator
-        if (!used && (c == ' '))
-        {
-            mxml_node_t* last = mxmlGetLastChild(x);
-            if (is_item_separator(last))
-            {
-                // End current term inside a set
-                prev_term = end_term_in_bracket(x, prev_term, last);
-                used = 1;
-
-                // Add column marker for matrix
-                mxmlNewElement(x, "NEXT_COLUMN");
-            }
-        }
-
         // Try to parse operator
         if (!used)
         {
             int          adj = 0;
             int          extra_spc = 0;
+            int          opt_spc = 0;
             mxml_node_t* last = mxmlGetLastChild(x);
 
             // Check for space at start of braille
@@ -3499,9 +3459,6 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
             {
                 spc = 1;
                 adj = 1;
-
-                // Add column marker for matrix
-                mxmlNewElement(x, "NEXT_COLUMN");
             }
 
             // Parse operators in index as if there were a leading space
@@ -3509,12 +3466,35 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
 
             // Try to parse operator
             used = parse_operators(x, brl + adj, len - adj,
-                    spc, closeBrl, &extra_spc);
+                    spc, closeBrl, &extra_spc, &opt_spc);
             if (used)  used += adj;
 
-            // Standalone space ends current term
-            if (adj && (!used || extra_spc))
-                prev_term = end_term_in_bracket(x, prev_term, last);
+            // Consume standalone space
+            if (!used && adj)
+            {
+                used = 1;
+                extra_spc = 1;
+            }
+
+            // Mark the start of next column
+            if (adj && opt_spc)
+            {
+                mxml_node_t* marker =
+                    new_text_element(MXML_NO_PARENT, "MARKER", "column");
+                mxmlAdd(x, MXML_ADD_AFTER, last, marker);
+            }
+
+            // Extra space ends current term
+            if (adj && extra_spc)
+            {
+                // Mark the start of next term
+                mxml_node_t* marker =
+                    new_text_element(MXML_NO_PARENT, "MARKER", "term");
+                mxmlAdd(x, MXML_ADD_AFTER, last, marker);
+
+                // Mark the expression as a set
+                if (is_bracketed)  mxmlElementSetAttr(x, "separators", ",");
+            }
         }
 
         // Try to parse letter fount
@@ -3529,7 +3509,7 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
         // Try to parse dot 1256 row marker in matrix
         if (!used && (c == '\\'))
         {
-            // Row mark terminates superscript and subscript
+            // Row marker terminates superscript and subscript
             if (isIndex)  break;
 
             // Consume the row marker 
@@ -3546,7 +3526,7 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
                 }
                 if (el)
                 {
-                    // Enclose existing items inside <mfenced>
+                    // Enclose existing nodes inside <mfenced>
                     const char*  ends = get_element_text(el);
                     mxml_node_t* first = next_elem(el);
                     mxml_node_t* last = last_child_elem(x);
@@ -3556,7 +3536,6 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
                     else if (strcmp(ends, "‖") == 0)  closeBrl = "__";
                     x            = mfenced;
                     is_bracketed = 1;
-                    prev_term    = last;
                     mxmlElementSetAttr(mfenced, "open", ends);
                     mxmlElementSetAttr(mfenced, "close", ends);
                     mxmlElementSetAttr(mfenced, "separators", "");
@@ -3567,9 +3546,9 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
                 }
             }
 
-            // Append a <NEXT_ROW> node
-            end_term_in_bracket(x, prev_term, mxmlGetLastChild(x));
-            prev_term = mxmlNewElement(x, "NEXT_ROW");
+            // Mark the start of next row
+            new_text_element(x, "MARKER", "row");
+            spc = 1;
         }
 
         // Try to parse letter for current fount
@@ -3593,9 +3572,6 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
         if (is_xml_element(last, "STRUCK_OUT"))
             mxmlDelete(last);
     }
-
-    // For <mfenced> with implicit separator, group last term
-    if (prev_term)  end_term_in_bracket(x, prev_term, NULL);
 
     // Perform post-processing
     postprocess_expr(x);
@@ -3637,8 +3613,7 @@ recursively_convert_trigonometric_operators(mxml_node_t* x)
             break;
 
         // Add an "apply function" operator after the function
-        apply = mxmlNewElement(MXML_NO_PARENT, "mo");
-        mxmlNewText(apply, 0, UTF8_APPLY_FUNCTION);
+        apply = new_text_element(MXML_NO_PARENT, "mo", UTF8_APPLY_FUNCTION);
         mxmlAdd(mxmlGetParent(x), MXML_ADD_AFTER, x, apply);
         break;
     }

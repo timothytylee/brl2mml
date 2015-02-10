@@ -262,8 +262,18 @@ int is_item_separator(mxml_node_t* x);
   */
 void remove_round_bracket(mxml_node_t* x);
 
-/** @brief Creates a <mi> element representing a unit.
+/** @brief Creates a new element and place text inside.
     @return     Pointer to newly created element.
+    @param x        Pointer to parent DOM element.
+    @param name     Name of the new element.
+    @param text     The text to place inside the element.
+  */
+mxml_node_t* new_text_element(mxml_node_t* x,
+        const char* name, const char* text);
+
+/** @brief Creates a <mspace> element and a <mi> element representing a unit.
+    @return     Pointer to newly created <mi> element.
+    @param x        Pointer to parent DOM element.
     @param unit     Name of the unit.
   */
 mxml_node_t* new_unit_element(mxml_node_t* x, const char* unit);
