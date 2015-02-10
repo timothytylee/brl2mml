@@ -2243,24 +2243,24 @@ is_differential_denominator(mxml_node_t* x)
     int is_del = 0; 
 
     // Elements should be inside an <mrow>
-    mxml_node_t* elem = mxmlGetFirstChild(x);
-    if (!elem)  return 0;
-    if (!mxmlGetElement(elem))  return 0;
+    mxml_node_t* el = mxmlGetFirstChild(x);
+    if (!el)  return 0;
+    if (!mxmlGetElement(el))  return 0;
 
     // First term should be "d" or "∂"
-    if      (is_identifier(elem, "d"))  is_d = 1;
-    else if (is_operator(elem, "∂"))    is_del = 1;
+    if      (is_identifier(el, "d"))  is_d = 1;
+    else if (is_operator(el, "∂"))    is_del = 1;
     else                                return 0;
 
     // There should be at least two terms in the product
-    elem = mxmlGetNextSibling(elem);
-    if (!elem)  return 0;
+    el = mxmlGetNextSibling(el);
+    if (!el)  return 0;
 
     // All remaining terms should be "∂" operator or identifier
-    for (;  elem;  elem = mxmlGetNextSibling(elem))
+    for (;  el;  el = mxmlGetNextSibling(el))
     {
-        if (is_identifier(elem, NULL))  continue;
-        if (is_del && is_operator(elem, "∂"))  continue;
+        if (is_identifier(el, NULL))  continue;
+        if (is_del && is_operator(el, "∂"))  continue;
         return 0;
     }
 
@@ -2300,8 +2300,8 @@ extend_differential_numerator(mxml_node_t* num, int diffType)
 static void
 fix_fraction(mxml_node_t* x)
 {
-    mxml_node_t* elem = mxmlGetFirstChild(x);
-    for (;  elem;  elem = mxmlGetNextSibling(elem))
+    mxml_node_t* el = mxmlGetFirstChild(x);
+    for (;  el;  el = mxmlGetNextSibling(el))
     {
         mxml_node_t* num;
         mxml_node_t* denom;
@@ -2309,17 +2309,17 @@ fix_fraction(mxml_node_t* x)
         int          diff_type = 0;
 
         // Process only <FRACTION> nodes
-        if (!is_xml_element(elem, "FRACTION"))  continue;
+        if (!is_xml_element(el, "FRACTION"))  continue;
 
         // Find denominator
-        denom = mxmlGetNextSibling(elem);
+        denom = mxmlGetNextSibling(el);
         if (!denom)  continue;
         denom = extend_denominator(denom);
         remove_round_bracket(denom);
         diff_type = is_differential_denominator(denom);
 
         // Find numerator
-        num = mxmlGetPrevSibling(elem);
+        num = mxmlGetPrevSibling(el);
         if (!num)  continue;
         if (diff_type)  num = extend_differential_numerator(num, diff_type);
         else            num = extend_numerator(num);
@@ -2327,11 +2327,11 @@ fix_fraction(mxml_node_t* x)
 
         // Re-arrange DOM tree
         mfrac = mxmlNewElement(MXML_NO_PARENT, "mfrac");
-        mxmlAdd(x, MXML_ADD_BEFORE, elem, mfrac);
+        mxmlAdd(x, MXML_ADD_BEFORE, el, mfrac);
         mxmlAdd(mfrac, MXML_ADD_AFTER, MXML_ADD_TO_PARENT, num);
         mxmlAdd(mfrac, MXML_ADD_AFTER, MXML_ADD_TO_PARENT, denom);
-        mxmlDelete(elem);
-        elem = mfrac;
+        mxmlDelete(el);
+        el = mfrac;
     }
 }
 
@@ -2360,8 +2360,8 @@ extend_continued_denominator(mxml_node_t* denom)
 static void
 fix_continued_fraction(mxml_node_t* x)
 {
-    mxml_node_t* elem = mxmlGetLastChild(x);
-    for (;  elem;  elem = mxmlGetPrevSibling(elem))
+    mxml_node_t* el = mxmlGetLastChild(x);
+    for (;  el;  el = mxmlGetPrevSibling(el))
     {
         mxml_node_t* num;
         mxml_node_t* denom;
@@ -2369,27 +2369,27 @@ fix_continued_fraction(mxml_node_t* x)
         mxml_node_t* mfrac;
 
         // Process only <CONT_FRAC> nodes
-        if (!is_xml_element(elem, "CONT_FRAC"))  continue;
+        if (!is_xml_element(el, "CONT_FRAC"))  continue;
 
         // Find numerator
-        num = mxmlGetPrevSibling(elem);
+        num = mxmlGetPrevSibling(el);
         if (!num)  continue;
         num = extend_numerator(num);
         remove_round_bracket(num);
 
         // Denominator is all nodes following the fraction line
-        denom = mxmlGetNextSibling(elem);
+        denom = mxmlGetNextSibling(el);
         if (!denom)  continue;
         denom = extend_continued_denominator(denom);
         remove_round_bracket(denom);
 
         // Re-arrange DOM tree
         mfrac = mxmlNewElement(MXML_NO_PARENT, "mfrac");
-        mxmlAdd(x, MXML_ADD_BEFORE, elem, mfrac);
+        mxmlAdd(x, MXML_ADD_BEFORE, el, mfrac);
         mxmlAdd(mfrac, MXML_ADD_AFTER, MXML_ADD_TO_PARENT, num);
         mxmlAdd(mfrac, MXML_ADD_AFTER, MXML_ADD_TO_PARENT, denom);
-        mxmlDelete(elem);
-        elem = mfrac;
+        mxmlDelete(el);
+        el = mfrac;
     }
 }
 
@@ -2398,16 +2398,16 @@ fix_continued_fraction(mxml_node_t* x)
 static void
 fix_struck_out(mxml_node_t* x)
 {
-    mxml_node_t* elem = mxmlGetFirstChild(x);
-    for (;  elem;  elem = mxmlGetNextSibling(elem))
+    mxml_node_t* el = mxmlGetFirstChild(x);
+    for (;  el;  el = mxmlGetNextSibling(el))
     {
         mxml_node_t* expr;
 
         // Process only <STRUCK_OUT> nodes
-        if (!is_xml_element(elem, "STRUCK_OUT"))  continue;
+        if (!is_xml_element(el, "STRUCK_OUT"))  continue;
 
         // Find expression to strike out
-        expr = mxmlGetNextSibling(elem);
+        expr = mxmlGetNextSibling(el);
         if (expr)
         {
             mxml_node_t* menclose;
@@ -2421,8 +2421,8 @@ fix_struck_out(mxml_node_t* x)
         }
 
         // Delete <STRUCK_OUT> node
-        expr = elem;
-        elem = mxmlGetNextSibling(elem);
+        expr = el;
+        el = mxmlGetNextSibling(el);
         mxmlDelete(expr);
     }
 }
@@ -2432,23 +2432,23 @@ fix_struck_out(mxml_node_t* x)
 static void
 fix_root(mxml_node_t* x)
 {
-    mxml_node_t* elem = mxmlGetFirstChild(x);
-    for (;  elem;  elem = mxmlGetNextSibling(elem))
+    mxml_node_t* el = mxmlGetFirstChild(x);
+    for (;  el;  el = mxmlGetNextSibling(el))
     {
         mxml_node_t* arg;
 
         // Process only <mroot> and <msqrt> nodes
-        if (!is_xml_element(elem, "mroot") && !is_xml_element(elem, "msqrt"))
+        if (!is_xml_element(el, "mroot") && !is_xml_element(el, "msqrt"))
             continue;
 
         // Find argument
-        arg = mxmlGetNextSibling(elem);
+        arg = mxmlGetNextSibling(el);
         if (!arg)  continue;
         remove_round_bracket(arg);
 
         // Re-arrange DOM tree
-        mxmlDelete(mxmlGetFirstChild(elem));
-        mxmlAdd(elem, MXML_ADD_BEFORE, MXML_ADD_TO_PARENT, arg);
+        mxmlDelete(mxmlGetFirstChild(el));
+        mxmlAdd(el, MXML_ADD_BEFORE, MXML_ADD_TO_PARENT, arg);
     }
 }
 
@@ -2457,11 +2457,11 @@ fix_root(mxml_node_t* x)
 static void
 fix_sum_product(mxml_node_t* x)
 {
-    mxml_node_t* elem = mxmlGetFirstChild(x);
-    for (;  elem;  elem = mxmlGetNextSibling(elem))
+    mxml_node_t* el = mxmlGetFirstChild(x);
+    for (;  el;  el = mxmlGetNextSibling(el))
     {
-        mxml_node_t* arg = elem;
-        const char*  name = mxmlGetElement(elem);
+        mxml_node_t* arg = el;
+        const char*  name = mxmlGetElement(el);
         const char*  mi;
 
         // Locate actual argument
@@ -2509,11 +2509,11 @@ fix_operator_scripts(mxml_node_t* x)
     };
     const char** op;
 
-    mxml_node_t* elem = mxmlGetFirstChild(x);
-    for (;  elem;  elem = mxmlGetNextSibling(elem))
+    mxml_node_t* el = mxmlGetFirstChild(x);
+    for (;  el;  el = mxmlGetNextSibling(el))
     {
-        mxml_node_t* arg = elem;
-        const char*  name = mxmlGetElement(elem);
+        mxml_node_t* arg = el;
+        const char*  name = mxmlGetElement(el);
         const char*  mo;
         int          skip_op = 0;
 
@@ -2535,7 +2535,7 @@ fix_operator_scripts(mxml_node_t* x)
         if (skip_op)  continue;
 
         // Convert nodes
-        while (arg != elem)
+        while (arg != el)
         {
             arg  = mxmlGetParent(arg);
             name = mxmlGetElement(arg);
@@ -2555,14 +2555,14 @@ static void
 fix_left_indices(mxml_node_t* x)
 {
     int          fixed = 0;
-    mxml_node_t* elem = mxmlGetFirstChild(x);
-    for (;  elem;  elem = mxmlGetNextSibling(elem))
+    mxml_node_t* el = mxmlGetFirstChild(x);
+    for (;  el;  el = mxmlGetNextSibling(el))
     {
-        mxml_node_t* arg = elem;
+        mxml_node_t* arg = el;
         mxml_node_t* owner;
         mxml_node_t* presub;
         mxml_node_t* presup;
-        const char*  name = mxmlGetElement(elem);
+        const char*  name = mxmlGetElement(el);
         int          whitespace = 0;
         const char*  mo;
 
@@ -2585,11 +2585,11 @@ fix_left_indices(mxml_node_t* x)
         if (!is_xml_element(arg, "LEFT_INDEX"))  continue;
 
         // Find the new owner of the indices
-        owner = mxmlGetNextSibling(elem);
+        owner = mxmlGetNextSibling(el);
         if (!owner)
         {
             // No more sibling, delete the indices
-            mxmlDelete(elem);
+            mxmlDelete(el);
             break;
         }
 
@@ -2608,7 +2608,7 @@ fix_left_indices(mxml_node_t* x)
         presup  = mxmlNewElement(owner, "none");
 
         // Attach presubscript and postsuperscript to owner
-        while (arg != elem)
+        while (arg != el)
         {
             arg  = mxmlGetParent(arg);
             name = mxmlGetElement(arg);
@@ -2632,8 +2632,8 @@ fix_left_indices(mxml_node_t* x)
         }
 
         // Advance to next term
-        mxmlDelete(elem);
-        elem  = owner;
+        mxmlDelete(el);
+        el  = owner;
         fixed = 1;
     }
 
@@ -2653,13 +2653,13 @@ split_by_column_marker(mxml_node_t* x)
     mxml_node_t* split;
 
     // Look for first column marker
-    for (mark = first_child_elem(x);  mark;  mark = get_next_element(mark))
+    for (mark = first_child_elem(x);  mark;  mark = next_elem(mark))
         if (is_xml_element(mark, "NEXT_COLUMN"))  break;
     if (!mark)  return;
 
     // Delete column marker
-    prev = get_prev_element(mark);
-    next = get_next_element(mark);
+    prev = prev_elem(mark);
+    next = next_elem(mark);
     mxmlDelete(mark);
 
     // Don't split if there is no more content
@@ -2681,7 +2681,7 @@ split_by_column_marker(mxml_node_t* x)
 static void
 wrap_matrix_row(mxml_node_t* start, mxml_node_t* end)
 {
-    mxml_node_t* elem;
+    mxml_node_t* el;
 
     // Do nothing if there is no content in row
     if (!start)  return;
@@ -2690,14 +2690,14 @@ wrap_matrix_row(mxml_node_t* start, mxml_node_t* end)
     group_siblings("mtr", start, end);
 
     // Convert <mrow> terms into <mtd>
-    for (elem = start;  elem;  elem = get_next_element(elem))
+    for (el = start;  el;  el = next_elem(el))
     {
-        if (is_xml_element(elem, "mrow"))
+        if (is_xml_element(el, "mrow"))
         {
-            mxmlSetElement(elem, "mtd");
-            split_by_column_marker(elem);
+            mxmlSetElement(el, "mtd");
+            split_by_column_marker(el);
         }
-        if (elem == end)  break;
+        if (el == end)  break;
     }
 }
 
@@ -2718,7 +2718,7 @@ recursively_remove_column_marker(mxml_node_t* x)
         x = first_child_elem(x);
         while (x)
         {
-            mxml_node_t* next = get_next_element(x);
+            mxml_node_t* next = next_elem(x);
             recursively_remove_column_marker(x);
             x = next;
         }
@@ -2732,7 +2732,7 @@ fix_matrix(mxml_node_t* x)
 {
     mxml_node_t* row_start;
     mxml_node_t* row_end;
-    mxml_node_t* elem;
+    mxml_node_t* el;
 
     // Make sure it is a <mfenced> node
     if (!is_xml_element(x, "mfenced"))  return;
@@ -2744,20 +2744,20 @@ fix_matrix(mxml_node_t* x)
     // Wrap children in <mtr> and <mtd>
     row_start = NULL;
     row_end   = NULL;
-    elem      = first_child_elem(x);
-    while (elem)
+    el      = first_child_elem(x);
+    while (el)
     {
         // Wrap elements up to <NEXT_ROW> inside <mtr>
-        if (is_xml_element(elem, "NEXT_ROW"))
+        if (is_xml_element(el, "NEXT_ROW"))
         {
-            mxml_node_t* marker = elem;
+            mxml_node_t* marker = el;
 
             wrap_matrix_row(row_start, row_end);
             row_start = NULL;
             row_end   = NULL;
 
             // Proceed to next element
-            elem = get_next_element(elem);
+            el = next_elem(el);
 
             // Remove marker
             mxmlDelete(marker);
@@ -2765,13 +2765,13 @@ fix_matrix(mxml_node_t* x)
         }
 
         // Remember start of current row
-        if (!row_start)  row_start = elem;
+        if (!row_start)  row_start = el;
 
         // Remember end of current row
-        row_end = elem;
+        row_end = el;
 
         // Proceed to next element
-        elem = get_next_element(elem);
+        el = next_elem(el);
     }
 
     // Wrap remaining elements inside <mtr>
@@ -2801,23 +2801,23 @@ fix_implicit_separators(mxml_node_t* x)
     sep = mxmlElementGetAttr(x, "separators");
     if (strlen(sep) > 0)
     {
-        mxml_node_t* elem = mxmlGetFirstChild(x);
-        for (;  elem;  elem = mxmlGetNextSibling(elem))
+        mxml_node_t* el = mxmlGetFirstChild(x);
+        for (;  el;  el = mxmlGetNextSibling(el))
         {
             mxml_node_t* next;
 
             // Do nothing when current node is already an operator
-            if (is_operator(elem, NULL))  continue;
+            if (is_operator(el, NULL))  continue;
 
             // Do nothing when next node is already an operator
-            next = mxmlGetNextSibling(elem);
+            next = mxmlGetNextSibling(el);
             if (!next)  break;
             if (is_operator(next, NULL))  continue;
 
             // Otherwise insert a separator between current node and next node
             mxml_node_t* mo = mxmlNewElement(MXML_NO_PARENT, "mo");
             mxmlNewText(mo, 0, sep);
-            mxmlAdd(x, MXML_ADD_AFTER, elem, mo);
+            mxmlAdd(x, MXML_ADD_AFTER, el, mo);
         }
 
         // Turn off implicit separator
@@ -2830,32 +2830,32 @@ fix_implicit_separators(mxml_node_t* x)
 static void
 fix_text_spacing(mxml_node_t* x)
 {
-    mxml_node_t* elem = mxmlGetFirstChild(x);
-    for (;  elem;  elem = mxmlGetNextSibling(elem))
+    mxml_node_t* el = mxmlGetFirstChild(x);
+    for (;  el;  el = mxmlGetNextSibling(el))
     {
         mxml_node_t* sibling;
 
         // Pad only <mtext>
-        if (!is_xml_element(elem, "mtext"))  continue;
+        if (!is_xml_element(el, "mtext"))  continue;
 
         // Check for <mspace> before current element
-        sibling = mxmlGetPrevSibling(elem);
+        sibling = mxmlGetPrevSibling(el);
         if (sibling && !is_xml_element(sibling, "mspace"))
         {
             // Insert <mspace> before current element
             mxml_node_t* mspace = mxmlNewElement(MXML_NO_PARENT, "mspace");
             mxmlElementSetAttr(mspace, "width", MSPACE_WIDTH);
-            mxmlAdd(x, MXML_ADD_BEFORE, elem, mspace);
+            mxmlAdd(x, MXML_ADD_BEFORE, el, mspace);
         }
 
         // Check for <mspace> after current element
-        sibling = mxmlGetNextSibling(elem);
+        sibling = mxmlGetNextSibling(el);
         if (sibling && !is_xml_element(sibling, "mspace"))
         {
             // Insert <mspace> after current element
             mxml_node_t* mspace = mxmlNewElement(MXML_NO_PARENT, "mspace");
             mxmlElementSetAttr(mspace, "width", MSPACE_WIDTH);
-            mxmlAdd(x, MXML_ADD_AFTER, elem, mspace);
+            mxmlAdd(x, MXML_ADD_AFTER, el, mspace);
         }
     }
 }
@@ -2879,32 +2879,32 @@ is_mfrac(mxml_node_t* x)
 static void
 remove_unneeded_brackets(mxml_node_t* x)
 {
-    mxml_node_t* elem = mxmlGetFirstChild(x);
-    for (;  elem;  elem = mxmlGetNextSibling(elem))
+    mxml_node_t* el = mxmlGetFirstChild(x);
+    for (;  el;  el = mxmlGetNextSibling(el))
     {
         mxml_node_t* prev;
         mxml_node_t* next;
         int          is_fraction;
 
         // Process only <mfenced>
-        if (!is_xml_element(elem, "mfenced"))  continue;
+        if (!is_xml_element(el, "mfenced"))  continue;
 
         // Make sure it is enclosed in round brackets
-        if (strcmp(mxmlElementGetAttr(elem, "open"), "(") != 0)  continue;
-        if (strcmp(mxmlElementGetAttr(elem, "close"), ")") != 0)  continue;
+        if (strcmp(mxmlElementGetAttr(el, "open"), "(") != 0)  continue;
+        if (strcmp(mxmlElementGetAttr(el, "close"), ")") != 0)  continue;
 
         // Retain bracket if there are multiple terms
-        if (mxmlGetFirstChild(elem) != mxmlGetLastChild(elem))  continue;
+        if (mxmlGetFirstChild(el) != mxmlGetLastChild(el))  continue;
 
         // Retain bracket if it encloses a <mtable>
-        if (is_xml_element(mxmlGetFirstChild(elem), "mtable"))  continue;
+        if (is_xml_element(mxmlGetFirstChild(el), "mtable"))  continue;
 
         // Check for fraction in current term
-        is_fraction = is_mfrac(elem);
+        is_fraction = is_mfrac(el);
 
         // Find previous and next element 
-        prev = mxmlGetPrevSibling(elem);
-        next = mxmlGetNextSibling(elem);
+        prev = mxmlGetPrevSibling(el);
+        next = mxmlGetNextSibling(el);
 
         // Retain bracket if previous term is similar to current term
         if (prev && is_same(is_mfrac(prev), is_fraction))  continue;
@@ -2913,8 +2913,8 @@ remove_unneeded_brackets(mxml_node_t* x)
         if (next && is_same(is_mfrac(next), is_fraction))  continue;
 
         // Remove redundant bracket now
-        remove_round_bracket(elem);
-        elem = simplify_single_child_mrow(elem);
+        remove_round_bracket(el);
+        el = simplify_single_child_mrow(el);
     }
 }
 
@@ -3044,7 +3044,7 @@ parse_fount(mxml_node_t* x, const char* brl, size_t len,
 static int
 parse_struck_out(mxml_node_t* x, const char* brl, size_t len)
 {
-    mxml_node_t* elem;
+    mxml_node_t* el;
 
     // Look for dot 5
     if (*brl != '"')  return 0;
@@ -3053,8 +3053,8 @@ parse_struck_out(mxml_node_t* x, const char* brl, size_t len)
     fix_fraction(x);
     
     // Dot 5 following <mfrac> is a differential operator separation sign
-    elem = mxmlGetLastChild(x);
-    if (elem && is_xml_element(elem, "mfrac"))  return 1;
+    el = mxmlGetLastChild(x);
+    if (el && is_xml_element(el, "mfrac"))  return 1;
 
     // Other it is a struck out code
     mxmlNewElement(x, "STRUCK_OUT");
@@ -3538,17 +3538,17 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
             else
             {
                 // Check for determinant or norms
-                mxml_node_t* elem = last_child_elem(x);
-                for (;  elem;  elem = get_prev_element(elem))
+                mxml_node_t* el = last_child_elem(x);
+                for (;  el;  el = prev_elem(el))
                 {
-                    if (is_operator(elem, "|") || is_operator(elem, "‖"))
+                    if (is_operator(el, "|") || is_operator(el, "‖"))
                         break;
                 }
-                if (elem)
+                if (el)
                 {
                     // Enclose existing items inside <mfenced>
-                    const char*  ends = get_element_text(elem);
-                    mxml_node_t* first = get_next_element(elem);
+                    const char*  ends = get_element_text(el);
+                    mxml_node_t* first = next_elem(el);
                     mxml_node_t* last = last_child_elem(x);
                     mxml_node_t* mfenced =
                         group_siblings("mfenced", first, last);
@@ -3563,7 +3563,7 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
                     mxmlElementSetAttr(mfenced, "matrix", "");
 
                     // Remove opening bracket
-                    mxmlDelete(elem);
+                    mxmlDelete(el);
                 }
             }
 
@@ -3644,7 +3644,7 @@ recursively_convert_trigonometric_operators(mxml_node_t* x)
     }
 
     // Replace trigonometric operators in child nodes
-    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
         recursively_convert_trigonometric_operators(x);
 }
 

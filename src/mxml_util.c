@@ -38,7 +38,7 @@ last_child_elem(mxml_node_t* x)
 
 
 mxml_node_t*
-get_prev_element(mxml_node_t* x)
+prev_elem(mxml_node_t* x)
 {
     for (x = mxmlGetPrevSibling(x);  x;  x = mxmlGetPrevSibling(x))
         if (mxmlGetElement(x))  break;
@@ -47,7 +47,7 @@ get_prev_element(mxml_node_t* x)
 
 
 mxml_node_t*
-get_next_element(mxml_node_t* x)
+next_elem(mxml_node_t* x)
 {
     for (x = mxmlGetNextSibling(x);  x;  x = mxmlGetNextSibling(x))
         if (mxmlGetElement(x))  break;
@@ -278,7 +278,7 @@ recursively_remove_redundant_mrow(mxml_node_t* x)
         x = simplify_single_child_mrow(x);
 
     // Remove redundant <mrow> in child nodes
-    for (y = first_child_elem(x);  y;  y = get_next_element(y))
+    for (y = first_child_elem(x);  y;  y = next_elem(y))
         y = recursively_remove_redundant_mrow(y);
 
     // Node might have been replaced, so return to caller
@@ -295,7 +295,7 @@ recursively_replace_mstyle(mxml_node_t* x)
     if (name && (strcmp(name, "mstyle") == 0))  mxmlSetElement(x, "mrow");
 
     // Replace <mstyle> in child nodes
-    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
         recursively_replace_mstyle(x);
 }
 
@@ -310,7 +310,7 @@ recursively_convert_trigonometric_functions(mxml_node_t* x)
         mxmlSetElement(x, "mo");
 
     // Replace trigonometric functions in child nodes
-    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
         recursively_convert_trigonometric_functions(x);
 }
 

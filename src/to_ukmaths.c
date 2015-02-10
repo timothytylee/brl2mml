@@ -339,7 +339,7 @@ is_numeric_index(mxml_node_t* x)
     if (is_xml_element(x, "mrow"))
     {
         mxml_node_t* mo = first_child_elem(x);
-        mxml_node_t* mn = mo ? get_next_element(mo) : NULL;
+        mxml_node_t* mn = mo ? next_elem(mo) : NULL;
         mxml_node_t* last = last_child_elem(x);
         if ((mn == last) &&
                 (is_operator(mo, "−") || is_operator(mo, "-")) &&
@@ -404,7 +404,7 @@ is_simple_term(mxml_node_t* x)
             x = first_child_elem(x);
             if (is_simple_term(x))
             {
-                x = get_next_element(x);
+                x = next_elem(x);
                 if (is_numeric_index(x))  return 1;
             }
             return 0;
@@ -416,7 +416,7 @@ is_simple_term(mxml_node_t* x)
             x = first_child_elem(x);
             if (is_simple_term(x))
             {
-                x = get_next_element(x);
+                x = next_elem(x);
                 if (is_overhead_mo(x))  return 1;
             }
             return 0;
@@ -427,7 +427,7 @@ is_simple_term(mxml_node_t* x)
         if (!x)  break;
 
         // Not simple if there is a sibling element
-        if (get_next_element(x))  return 0;
+        if (next_elem(x))  return 0;
     }
 
     // All nodes are single element
@@ -532,7 +532,7 @@ translate_numeric_index(StrBuf* buf, mxml_node_t* x)
     else if (is_xml_element(x, "mrow"))
     {
         mxml_node_t* mo = first_child_elem(x);
-        mxml_node_t* mn = mo ? get_next_element(mo) : NULL;
+        mxml_node_t* mn = mo ? next_elem(mo) : NULL;
         if (mo && mn)
         {
             append_text(buf, ";-");
@@ -563,7 +563,7 @@ translate_children(int style, StrBuf* buf, mxml_node_t* x)
     mxml_node_t* el = first_child_elem(x);
     while (el)
     {
-        mxml_node_t* next = get_next_element(el);
+        mxml_node_t* next = next_elem(el);
         if (is_xml_element(el, "mspace") ||
                 is_xml_element(el, "mphantom") ||
                 is_operator(el, UTF8_APPLY_FUNCTION))
@@ -572,19 +572,19 @@ translate_children(int style, StrBuf* buf, mxml_node_t* x)
     }
 
     // Translate each of the child node
-    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
     {
         // Handle matrices enclosed in "|" or "‖"
         if (is_operator(x, "|") || is_operator(x, "‖"))
         {
-            mxml_node_t* next = get_next_element(x);
+            mxml_node_t* next = next_elem(x);
             if (is_xml_element(next, "mtable"))
             {
                 // Directly translate matrix
                 end_with = translate_mtable(style, tmp_buf, next);
 
                 // Skip closing vertical bars
-                x = get_next_element(next);
+                x = next_elem(next);
                 continue;
             }
         }
@@ -1388,7 +1388,7 @@ static void
 get_mtr_size(mxml_node_t* x, int* col)
 {
     *col = 0;
-    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
         if (is_xml_element(x, "mtd"))  ++*col;
 }
 
@@ -1401,7 +1401,7 @@ get_mtable_size(mxml_node_t* x, int* maxRow, int* maxCol)
     *maxCol = 0;
 
     // Count <mtr>
-    for (x = first_child_elem(x);  x;  x = get_next_element(x))
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
     {
         if (is_xml_element(x, "mtr"))
         {
@@ -1429,13 +1429,13 @@ translate_cells(int style, mxml_node_t* x, const char* terminator,
     int col;
 
     // Process every <mtr>
-    for (row = 0;  x;  x = get_next_element(x))
+    for (row = 0;  x;  x = next_elem(x))
     {
         mxml_node_t* y;
         if (!is_xml_element(x, "mtr"))  continue;
 
         // Process every <mtd>
-        for (col = 0, y = first_child_elem(x);  y;  y = get_next_element(y))
+        for (col = 0, y = first_child_elem(x);  y;  y = next_elem(y))
         {
             StrBuf*     cell = cells[row * max_col + col];
             const char* str;
@@ -1580,7 +1580,7 @@ translate_mtable(int style, StrBuf* buf, mxml_node_t* x)
 
     // Dot 123456 starts bracketed matrix
     terminator = "=";
-    prev = get_prev_element(x);
+    prev = prev_elem(x);
     if (prev)
     {
         // Look for matrices enclosed in vertical bars
@@ -1692,7 +1692,7 @@ static long
 translate_mfrac(int style, StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* num = first_child_elem(x);
-    mxml_node_t* denom = num ? get_next_element(num) : NULL;
+    mxml_node_t* denom = num ? next_elem(num) : NULL;
     int          simple;
 
     // Make sure the required child elements are present
@@ -1740,7 +1740,7 @@ static long
 translate_mroot(int style, StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
-    mxml_node_t* index = base ? get_next_element(base) : NULL;
+    mxml_node_t* index = base ? next_elem(base) : NULL;
 
     // Make sure the required child elements are present
     if (!base)  return END_WITH_OTHER;
@@ -1762,7 +1762,7 @@ static long
 translate_msqrt(int style, StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
-    mxml_node_t* next = base ? get_next_element(base) : NULL;
+    mxml_node_t* next = base ? next_elem(base) : NULL;
 
     // Make sure there is at least one child element
     if (!base)  return END_WITH_OTHER;
@@ -1774,7 +1774,7 @@ translate_msqrt(int style, StrBuf* buf, mxml_node_t* x)
         while (next)
         {
             last = next;
-            next = get_next_element(next);
+            next = next_elem(next);
         }
         base = group_siblings("mrow", base, last);
     }
@@ -1792,7 +1792,7 @@ static long
 translate_msub_munder(int style, StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
-    mxml_node_t* index = base ? get_next_element(base) : NULL;
+    mxml_node_t* index = base ? next_elem(base) : NULL;
 
     // Make sure the required child elements are present
     if (!base)  return END_WITH_OTHER;
@@ -1812,7 +1812,7 @@ static long
 translate_msup_mover(int style, StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
-    mxml_node_t* index = base ? get_next_element(base) : NULL;
+    mxml_node_t* index = base ? next_elem(base) : NULL;
 
     // Make sure the required child elements are present
     if (!base)  return END_WITH_OTHER;
@@ -1840,8 +1840,8 @@ static long
 translate_msubsup_munderover(int style, StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
-    mxml_node_t* sub = base ? get_next_element(base) : NULL;
-    mxml_node_t* sup = sub ? get_next_element(sub) : NULL;
+    mxml_node_t* sub = base ? next_elem(base) : NULL;
+    mxml_node_t* sup = sub ? next_elem(sub) : NULL;
 
     // Make sure the required child elements are present
     if (!base)  return END_WITH_OTHER;
@@ -1857,17 +1857,6 @@ translate_msubsup_munderover(int style, StrBuf* buf, mxml_node_t* x)
 
     // Translate superscript
     return translate_superscript(style, buf, sup);
-}
-
-
-/// @brief Checks whether a node is a <node> element
-static int
-is_none_element(mxml_node_t* x)
-{
-    const char* name;
-    if (!x)  return;
-    name = mxmlGetElement(x);
-    return (name && (strcmp(name, "none") == 0));
 }
 
 
@@ -2011,7 +2000,7 @@ translate_mi(int style, StrBuf* buf, mxml_node_t* x)
         const char*  name;
 
         // Stop when there is no more succeeding nodes
-        mxml_node_t* next = get_next_element(x);
+        mxml_node_t* next = next_elem(x);
         if (!next)  break;
 
         // Stop if next node is not <mi>

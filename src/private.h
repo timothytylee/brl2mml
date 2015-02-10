@@ -180,13 +180,13 @@ mxml_node_t* last_child_elem(mxml_node_t* x);
     @return     Pointer to previous sibling element.  @p NULL if there is none.
     @param x    Pointer to a DOM element.
   */
-mxml_node_t* get_prev_element(mxml_node_t* x);
+mxml_node_t* prev_elem(mxml_node_t* x);
 
 /** @brief Gets the next sibling element.
     @return     Pointer to next sibling element.  @p NULL if there is none.
     @param x    Pointer to a DOM element.
   */
-mxml_node_t* get_next_element(mxml_node_t* x);
+mxml_node_t* next_elem(mxml_node_t* x);
 
 /** @brief Gets the text value of the first child.
     @return     NULL-terminated text value.  Blank string if there is none.
