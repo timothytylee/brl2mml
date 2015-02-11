@@ -2690,6 +2690,7 @@ fix_matrix(mxml_node_t* x)
             {
                 mxml_node_t* cell =
                     group_siblings("mtd", cell_start, cell_end);
+                if (cell_start == cell_end)  remove_round_bracket(cell_start);
 
                 // Update extent of current row
                 if (!row_start)  row_start = cell;
@@ -2729,6 +2730,10 @@ fix_matrix(mxml_node_t* x)
     if (cell_start)
     {
         mxml_node_t* cell = group_siblings("mtd", cell_start, cell_end);
+        if (cell_start == cell_end)
+            remove_round_bracket(cell_start);
+
+        // Update extent of last row
         if (!row_start)  row_start = cell;
         row_end = cell;
     }

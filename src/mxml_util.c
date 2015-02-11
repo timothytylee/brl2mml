@@ -280,8 +280,7 @@ recursively_remove_redundant_mrow(mxml_node_t* x)
     mxml_node_t* y;
 
     // Attempt to simplify <mrow>
-    const char*  name = mxmlGetElement(x);
-    if (name && (strcmp(name, "mrow") == 0))
+    if (is_xml_element(x, "mrow"))
         x = simplify_single_child_mrow(x);
 
     // Remove redundant <mrow> in child nodes
@@ -298,8 +297,7 @@ static void
 recursively_replace_mstyle(mxml_node_t* x)
 {
     // Rename <mstyle> to <mrow>
-    const char* name = mxmlGetElement(x);
-    if (name && (strcmp(name, "mstyle") == 0))  mxmlSetElement(x, "mrow");
+    if (is_xml_element(x, "mstyle"))  mxmlSetElement(x, "mrow");
 
     // Replace <mstyle> in child nodes
     for (x = first_child_elem(x);  x;  x = next_elem(x))
@@ -322,6 +320,67 @@ recursively_convert_trigonometric_functions(mxml_node_t* x)
 }
 
 
+/// @brief Recursively ensure <mtable> is wrapped in <mfenced>
+static mxml_node_t*
+recursively_normalize_mtable(mxml_node_t* x)
+{
+    // Ensure <mtable> is wrapped in <mfenced> in child nodes
+    mxml_node_t* y;
+    for (y = first_child_elem(x);  y;  y = next_elem(y))
+        y = recursively_remove_redundant_mrow(y);
+
+    // Perform check on <mtable>
+    if (is_xml_element(x, "mtable"))
+    {
+        int          ok = 0;
+        mxml_node_t* parent = mxmlGetParent(x);
+        if (!parent)
+        {
+            // If <mtable> is the root node, do nothing
+            ok = 1;
+        }
+        else if (is_xml_element(parent, "mfenced") &&
+            (first_child_elem(parent) == x) &&
+            (last_child_elem(parent) == x))
+        {
+            // If <mtable> is the sole child of <mfenced>, do nothing
+            ok = 1;
+        }
+
+        // Wrap <mtable> in <mfenced>
+        if (!ok)
+        {
+            mxml_node_t* prev = prev_elem(x);
+            mxml_node_t* next = next_elem(x);
+            const char*  openAttr = "[";
+            const char*  closeAttr = "]";
+
+            // Handle matrices enclosed in "|" or "‖"
+            if (is_operator(prev, "|") && is_operator(next, "|"))
+            {
+                openAttr = closeAttr = "|";
+                mxmlDelete(prev);
+                mxmlDelete(next);
+            }
+            if (is_operator(prev, "‖") && is_operator(next, "‖"))
+            {
+                openAttr = closeAttr = "‖";
+                mxmlDelete(prev);
+                mxmlDelete(next);
+            }
+
+            // Wrap <mtable> now
+            x = group_siblings("mfenced", x, x);
+            mxmlElementSetAttr(x, "open", openAttr);
+            mxmlElementSetAttr(x, "close", closeAttr);
+        }
+    }
+
+    // Node might have been replaced, so return to caller
+    return x;
+}
+
+
 mxml_node_t*
 parse_mathml(const char* mml)
 {
@@ -333,6 +392,7 @@ parse_mathml(const char* mml)
     recursively_replace_mstyle(x);
     recursively_remove_redundant_mrow(x);
     recursively_convert_trigonometric_functions(x);
+    recursively_normalize_mtable(x);
 
     // Return DOM tree to caller
     return x;
