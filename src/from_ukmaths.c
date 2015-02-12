@@ -2750,8 +2750,8 @@ fix_matrix(mxml_node_t* x)
 static void
 fix_implicit_separators(mxml_node_t* x)
 {
-    mxml_node_t* term_start;
-    mxml_node_t* term_end;
+    mxml_node_t* start;
+    mxml_node_t* end;
     mxml_node_t* el;
     const char*  sep;
 
@@ -2764,9 +2764,9 @@ fix_implicit_separators(mxml_node_t* x)
     if (!strlen(sep))  return;
 
     // Group terms based on column markers and insert separators
-    term_start = NULL;
-    term_end   = NULL;
-    el         = first_child_elem(x);
+    start = NULL;
+    end   = NULL;
+    el    = first_child_elem(x);
     while (el)
     {
         mxml_node_t* next = next_elem(el);
@@ -2778,27 +2778,26 @@ fix_implicit_separators(mxml_node_t* x)
             int has_separator = 0;
 
             // Handle implicit item separator
-            if (is_item_separator(term_end))
+            if (is_item_separator(end))
             {
-                if (term_start == term_end)
+                if (start == end)
                 {
                     // There is nothing before the separator, ignore term
-                    term_start = NULL;
-                    term_end   = NULL;
+                    start = NULL;
+                    end   = NULL;
                 }
                 else
                 {
                     // Exclude implicit item separator from the term
-                    term_end = prev_elem(term_end);
+                    end = prev_elem(end);
                     has_separator = 1;
                 }
             }
 
             // Group content of current term
-            if (term_start)
+            if (start)
             {
-                if (term_start != term_end)
-                    group_siblings("mrow", term_start, term_end);
+                if (start != end)  group_siblings("mrow", start, end);
 
                 // Make sure an item separator exists
                 if (next && !has_separator)
@@ -2813,14 +2812,14 @@ fix_implicit_separators(mxml_node_t* x)
             mxmlDelete(el);
 
             // Prepare for next term
-            term_start = NULL;
-            term_end   = NULL;
+            start = NULL;
+            end   = NULL;
         }
         else
         {
             // Update extent of current term
-            if (!term_start)  term_start = el;
-            term_end = el;
+            if (!start)  start = el;
+            end = el;
         }
 
         // Advance to next element
@@ -2828,8 +2827,7 @@ fix_implicit_separators(mxml_node_t* x)
     }
 
     // Group content of last term
-    if (term_start && (term_start != term_end))
-        group_siblings("mrow", term_start, term_end);
+    if (start && (start != end))  group_siblings("mrow", start, end);
 }
 
 
@@ -3481,24 +3479,25 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
                 extra_spc = 1;
             }
 
-            // Mark the start of next column
-            if (adj && opt_spc)
+            // Mark the start of next column or term
+            if (adj)
             {
-                mxml_node_t* marker =
-                    new_text_element(MXML_NO_PARENT, "MARKER", "column");
-                mxmlAdd(x, MXML_ADD_AFTER, last, marker);
-            }
+                int new_term = 0;
 
-            // Extra space ends current term
-            if (adj && extra_spc)
-            {
-                // Mark the start of next term
-                mxml_node_t* marker =
-                    new_text_element(MXML_NO_PARENT, "MARKER", "term");
+                // Space after item separator always starts a term
+                if (opt_spc && is_item_separator(last))  new_term = 1;
+
+                // Extra space always starts a term
+                if (extra_spc)  new_term = 1;
+
+                // Add a marker
+                mxml_node_t* marker = new_text_element(MXML_NO_PARENT, "MARKER",
+                    (new_term ? "term" : "column"));
                 mxmlAdd(x, MXML_ADD_AFTER, last, marker);
 
                 // Mark the expression as a set
-                if (is_bracketed)  mxmlElementSetAttr(x, "separators", ",");
+                if (new_term && is_bracketed)
+                    mxmlElementSetAttr(x, "separators", ",");
             }
         }
 

@@ -1393,6 +1393,22 @@ translate_menclose(int style, StrBuf* buf, mxml_node_t* x)
 }
 
 
+/// @brief Translates <mrow> node
+static long
+translate_mrow(int style, StrBuf* buf, mxml_node_t* x)
+{
+    return translate_children(style, buf, x);
+}
+
+
+/// @brief Translates <mpadded> node
+static long
+translate_mpadded(int style, StrBuf* buf, mxml_node_t* x)
+{
+    return translate_children(style, buf, x);
+}
+
+
 /// @brief Count the number of columns in a <mtr> node
 static void
 get_mtr_size(mxml_node_t* x, int* col)
@@ -1434,21 +1450,22 @@ static void
 translate_matrix_row(int style, StrBuf* buf, mxml_node_t* x)
 {
     StrBuf* col_buf;
-    int     col;
+    int     count;
+
+    // Update math style
+    style = find_math_style(style, x);
 
     // Translate every cell in the row
     col_buf = create_buffer();
-    col = 0;
-    for (x = first_child_elem(x);  x;  x = next_elem(x), ++col)
+    count   = 0;
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
     {
-        const char* str;
-
         // Look for <mtd> node
         if (!is_xml_element(x, "mtd"))  continue;
 
         // Translate cell content
         col_buf->mpStr[0] = '\0';
-        translate_children(find_math_style(style, x), col_buf, x);
+        translate_children(style, col_buf, x);
 
         // Add brackets if there are spaces in the translation
         if (strchr(col_buf->mpStr, ' '))
@@ -1458,22 +1475,22 @@ translate_matrix_row(int style, StrBuf* buf, mxml_node_t* x)
         }
 
         // Append content now
-        if (col > 0)
+        if (count > 0)
         {
             // Append space between cells
             append_char(buf, ' ');
         }
         append_text(buf, col_buf->mpStr);
 
-        // Increment column index
-        ++col;
+        // Increment column count
+        ++count;
     }
     destroy_buffer(col_buf);
 }
 
 
 /// @brief Translates the matrix represented by a <mtable> node
-static long
+static void
 translate_matrix(int style, StrBuf* buf, mxml_node_t* x,
         const char* openBrl, const char* closeBrl)
 {
@@ -1482,7 +1499,7 @@ translate_matrix(int style, StrBuf* buf, mxml_node_t* x,
     int     max_row = 0;
     int     max_col = 0;
     StrBuf* row_buf;
-    int     row;
+    int     count;
 
     // Ignore empty matrices
     get_mtable_size(x, &max_row, &max_col);
@@ -1499,9 +1516,12 @@ translate_matrix(int style, StrBuf* buf, mxml_node_t* x,
     // Open matrix
     append_text(buf, openBrl);
 
+    // Update math style
+    style = find_math_style(style, x);
+
     // Translate every row in the matrix
     row_buf = create_buffer();
-    row     = 0;
+    count   = 0;
     for (x = first_child_elem(x);  x;  x = next_elem(x))
     {
         // Look for <mtr> node
@@ -1509,10 +1529,10 @@ translate_matrix(int style, StrBuf* buf, mxml_node_t* x,
 
         // Translate row content
         row_buf->mpStr[0] = '\0';
-        translate_matrix_row(find_math_style(style, x), row_buf, x);
+        translate_matrix_row(style, row_buf, x);
 
         // Append content now
-        if (row > 0)
+        if (count > 0)
         {
             // Append dot 1256 row separator between rows
             append_char(buf, '\\');
@@ -1525,30 +1545,98 @@ translate_matrix(int style, StrBuf* buf, mxml_node_t* x,
         }
         append_text(buf, row_buf->mpStr);
 
-        // Increment row index
-        ++row;
+        // Increment row count
+        ++count;
     }
     destroy_buffer(row_buf);
 
     // Close matrix
     append_text(buf, closeBrl);
-    return END_WITH_OTHER;
 }
 
 
-/// @brief Translates <mrow> node
-static long
-translate_mrow(int style, StrBuf* buf, mxml_node_t* x)
+/// @brief Groups the terms inside a <mfenced> node based on item separators
+static void
+group_terms_in_set(mxml_node_t* x)
 {
-    return translate_children(style, buf, x);
+    // Group terms based on column markers and insert separators
+    mxml_node_t* start = NULL;
+    mxml_node_t* end = NULL;
+    mxml_node_t* el = first_child_elem(x);
+    while (el)
+    {
+        mxml_node_t* next = next_elem(el);
+
+        if (is_item_separator(el))
+        {
+            // Group content of current term
+            if (start)  group_siblings("TERM", start, end);
+
+            // Prepare for next term
+            start = NULL;
+            end   = NULL;
+        }
+        else
+        {
+            // Update extent of current term
+            if (!start)  start = el;
+            end = el;
+        }
+
+        // Advance to next element
+        el = next;
+    }
+
+    // Group content of last term
+    if (start)  group_siblings("TERM", start, end);
 }
 
 
-/// @brief Translates <mpadded> node
-static long
-translate_mpadded(int style, StrBuf* buf, mxml_node_t* x)
+/// @brief Translates the terms inside a <mfenced> node
+static void
+translate_terms_in_set(int style, StrBuf* buf, mxml_node_t* x)
 {
-    return translate_children(style, buf, x);
+    StrBuf*      term_buf;
+    mxml_node_t* last_sep;
+    mxml_node_t* el;
+
+    // Update math style
+    style = find_math_style(style, x);
+
+    // Separately translate each term
+    term_buf = create_buffer();
+    for (el = first_child_elem(x);  el;  el = next_elem(el))
+    {
+        mxml_node_t* sep = prev_elem(el);
+        if (!is_xml_element(el, "TERM"))  continue;
+
+        // Translation term
+        term_buf->mpStr[0] = '\0';
+        translate_children(style, term_buf, el);
+
+        if (sep)
+        {
+            int explicit = 0;
+
+            // USe explicit separator if it is not a comma
+            if (!is_operator(sep, ","))  explicit = 1;
+
+            // USe explicit separator if the term starts with dot 56 operator
+            if ((term_buf->mpStr[0] == ';') &&
+                    strchr("4678-;", term_buf->mpStr[1]))
+                explicit = 1;
+
+            // Append explicit separator if necessary
+            if (explicit)  translate_math_node(style, buf, sep);
+
+            // Always delimit terms with a space
+            append_char(buf, ' ');
+        }
+
+        // Append content
+        append_text(buf, term_buf->mpStr);
+    }
+    destroy_buffer(term_buf);
 }
 
 
@@ -1560,6 +1648,7 @@ translate_mfenced(int style, StrBuf* buf, mxml_node_t* x)
     const char*  open_brl;
     const char*  close_brl;
     mxml_node_t* child = first_child_elem(x);
+    mxml_node_t* el;
 
     // Translate opening bracket
     open_brl = bracket_to_brl(mxmlElementGetAttr(x, "open"));
@@ -1569,15 +1658,25 @@ translate_mfenced(int style, StrBuf* buf, mxml_node_t* x)
     close_brl = bracket_to_brl(mxmlElementGetAttr(x, "close"));
     if (!close_brl)  close_brl = bracket_to_brl(")");
 
-    // Check for matrices, which appear as <mtable> inside <mfenced>
+    // Translate matrix, which is a <mtable> inside <mfenced>
     if (is_xml_element(child, "mtable"))
     {
-        style = find_math_style(style, child);
         translate_matrix(style, buf, child, open_brl, close_brl);
-        return;
+        return END_WITH_OTHER;
     }
 
-    // Translate content inside bracket
+    // Translate set, which contains item separators
+    for (el = child;  el;  el = next_elem(el))
+    {
+        if (!is_item_separator(el))  continue;
+        append_text(buf, open_brl);
+        group_terms_in_set(x);
+        translate_terms_in_set(style, buf, x);
+        append_text(buf, close_brl);
+        return END_WITH_OTHER;
+    }
+
+    // Translate normal expression
     append_text(buf, open_brl);
     translate_children(style, buf, x);
     append_text(buf, close_brl);
