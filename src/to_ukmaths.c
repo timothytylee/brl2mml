@@ -30,6 +30,12 @@
 #define NOT_IDENTIFIER                  0
 #define IS_IDENTIFIER                   1
 
+#define NOT_OVERSCRIPT                  0
+#define IS_OVERSCRIPT                   1
+
+#define NOT_UNDERSCRIPT                 0
+#define IS_UNDERSCRIPT                  1
+
 
 /// @brief MathML styles
 enum
@@ -60,9 +66,12 @@ typedef struct
 } MathData;
 
 
-/// Forward declare translate_math_node() for recursive invocation
-static int
-translate_math_node(StrBuf* buf, mxml_node_t* x);
+/// Import is_extendable_ukmaths_node() from "from_ukmaths.c"
+int is_extendable_ukmaths_node(mxml_node_t* x);
+
+/// Forward declaration for recursive invocation
+static int translate_math_node(StrBuf* buf, mxml_node_t* x);
+static void translate_terms_in_set(StrBuf* buf, mxml_node_t* x);
 
 
 /// @brief Private data destructor
@@ -154,6 +163,16 @@ set_unspaced(StrBuf* buf, int unspaced)
 }
 
 
+/// @brief Creates temporary buffer that retains private data
+static StrBuf*
+create_temporary_buffer(StrBuf* buf)
+{
+    StrBuf* tmp_buf = create_buffer();
+    *(get_private_data(tmp_buf)) = *(get_private_data(buf));
+    return tmp_buf;
+}
+
+
 /// @brief Checks whether a string buffer has a trailing space
 static int
 has_trailing_space(StrBuf* buf)
@@ -165,6 +184,16 @@ has_trailing_space(StrBuf* buf)
 
     // Otherwise check for trailing space
     return (strchr(" <", *tail) != NULL);
+}
+
+
+/// @brief Checks whether there is an item separator child node
+static int
+contains_item_separator(mxml_node_t* x)
+{
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
+        if (is_item_separator(x))  return 1;
+    return 0;
 }
 
 
@@ -528,11 +557,29 @@ strip_trailing_space(StrBuf* buf)
 }
 
 
+/// @brief Strips trailing index terminators from a string buffer
+static void
+strip_trailing_index_terminators(StrBuf* buf)
+{
+    int   len = strlen(buf->mpStr);
+    char* ptr = buf->mpStr + len - 1;
+    while (len)
+    {
+        if (*ptr != ']')  break;
+
+        // Replace dot 12456 index terminator from end of string
+        *ptr = '\0';
+        --ptr;
+        --len;
+    }
+}
+
+
 /// @brief Translates child nodes
 static int
 translate_children(StrBuf* buf, mxml_node_t* x)
 {
-    StrBuf* tmp_buf = create_buffer();
+    StrBuf* tmp_buf;
     int     end_with = END_WITH_OTHER;
 
     // Remove <mspace>, <mphantom> and "apply function" <mo> nodes
@@ -547,11 +594,8 @@ translate_children(StrBuf* buf, mxml_node_t* x)
         el = next;
     }
 
-    // Copy private data into temporary buffer
-    set_math_style(tmp_buf, get_math_style(buf));
-    set_unspaced(tmp_buf, is_unspaced(buf));
-
     // Translate each of the child node
+    tmp_buf = create_temporary_buffer(buf);
     for (x = first_child_elem(x);  x;  x = next_elem(x))
         end_with = translate_math_node(tmp_buf, x);
 
@@ -567,7 +611,7 @@ translate_children(StrBuf* buf, mxml_node_t* x)
 static int
 translate_expression(StrBuf* buf, mxml_node_t* x)
 {
-    StrBuf* tmp_buf = create_buffer();
+    StrBuf* tmp_buf = create_temporary_buffer(buf);
     int     simple = is_simple_term(x);
     int     end_with;
 
@@ -575,15 +619,24 @@ translate_expression(StrBuf* buf, mxml_node_t* x)
     x = group_standalone_mi(x);
 
     // Translate node into temporary buffer
-    end_with = translate_math_node(tmp_buf, x);
+    if (is_unspaced(buf) && contains_item_separator(x))
+    {
+        translate_terms_in_set(tmp_buf, x);
+        simple   = 0;
+        end_with = END_WITH_OTHER;
+    }
+    else
+        end_with = translate_math_node(tmp_buf, x);
     strip_trailing_space(tmp_buf);
 
-    // Prevent arrow from being mis-interpreted as numeric index
-    if (tmp_buf->mpStr[0] == '3')  prepend_char(tmp_buf, '@');
-
-    // Surround complex expression with bracket
-    if (!simple)
+    if (simple || (is_unspaced(buf) && !strchr(tmp_buf->mpStr, ' ')))
     {
+        // Prevent arrow from being mis-interpreted as numeric index
+        if (tmp_buf->mpStr[0] == '3')  prepend_char(tmp_buf, '@');
+    }
+    else
+    {
+        // Surround complex expression with bracket
         prepend_char(tmp_buf, '<');
         append_char(tmp_buf, '>');
         end_with = END_WITH_OTHER;
@@ -632,7 +685,7 @@ translate_overhead_symbol(StrBuf* buf, mxml_node_t* x)
 
 /// @brief Translates node as a subscript
 static int
-translate_subscript(StrBuf* buf, mxml_node_t* x)
+translate_subscript(StrBuf* buf, mxml_node_t* x, int isUnder)
 {
     // Minimize spaces in subscript
     set_unspaced(buf, 1);
@@ -643,6 +696,9 @@ translate_subscript(StrBuf* buf, mxml_node_t* x)
         translate_numeric_index(buf, x);
         return END_WITH_LOWERED_DIGIT;
     }
+
+    // Dot 4 starts underscript
+    if (isUnder)  append_char(buf, '@');
 
     // Dot 16 and 12456 encloses subscript
     append_char(buf, '*');
@@ -655,13 +711,16 @@ translate_subscript(StrBuf* buf, mxml_node_t* x)
 
 /// @brief Translates node as a superscript
 static int
-translate_superscript(StrBuf* buf, mxml_node_t* x)
+translate_superscript(StrBuf* buf, mxml_node_t* x, int isOver)
 {
     // Minimize spaces in superscript
     set_unspaced(buf, 1);
 
     // Overhead symbols are appended directly
     if (translate_overhead_symbol(buf, x))  return END_WITH_OTHER;
+
+    // Dot 4 starts overscript
+    if (isOver)  append_char(buf, '@');
 
     // Dot 346 starts superscript
     append_char(buf, '+');
@@ -846,6 +905,7 @@ translate_symbolic_operator(StrBuf* buf, const char* name)
     };
     const SymbolRec* rec;
     int              style = get_math_style(buf);
+    int              unspaced = is_unspaced(buf);
 
     // Check all known handlers
     for (rec = symbols;  rec->mpName;  ++rec)
@@ -855,20 +915,28 @@ translate_symbolic_operator(StrBuf* buf, const char* name)
         // Append leading space if necessary
         if (rec->mLeading && !has_trailing_space(buf))
         {
-            int need_space = 0;
-            if (rec->mLeading == 1)
+            if ((rec->mpBrl[0] == '3') && unspaced)
             {
-                // Compulsory leading space is always needed
-                need_space = 1;
+                // Insert a dot 4 separator before arrow
+                append_char(buf, '@');
             }
-            else if (!is_unspaced(buf))
+            else 
             {
-                // Retain optional leading space whenever possible
-                need_space = 1;
-            }
+                int need_space = 0;
+                if (rec->mLeading == 1)
+                {
+                    // Compulsory leading space is always needed
+                    need_space = 1;
+                }
+                else if (!unspaced)
+                {
+                    // Retain optional leading space whenever possible
+                    need_space = 1;
+                }
 
-            // Add leading space now
-            if (need_space)  append_char(buf, ' ');
+                // Add leading space now
+                if (need_space)  append_char(buf, ' ');
+            }
         }
 
         // Append braille translation
@@ -1442,10 +1510,10 @@ translate_matrix_row(StrBuf* buf, mxml_node_t* x)
     int     old_style;
 
     // Update math style
-    old_style = update_math_style(buf, x);
+    col_buf = create_temporary_buffer(buf);
+    update_math_style(col_buf, x);
 
     // Translate every cell in the row
-    col_buf = create_buffer();
     count = 0;
     for (x = first_child_elem(x);  x;  x = next_elem(x))
     {
@@ -1456,6 +1524,7 @@ translate_matrix_row(StrBuf* buf, mxml_node_t* x)
         col_buf->mpStr[0] = '\0';
         set_unspaced(col_buf, 1);
         translate_children(col_buf, x);
+        strip_trailing_index_terminators(col_buf);
 
         // Add brackets if there are spaces in the translation
         if (strchr(col_buf->mpStr, ' '))
@@ -1476,9 +1545,6 @@ translate_matrix_row(StrBuf* buf, mxml_node_t* x)
         ++count;
     }
     destroy_buffer(col_buf);
-
-    // Restore math style
-    set_math_style(buf, old_style);
 }
 
 
@@ -1511,10 +1577,10 @@ translate_matrix(StrBuf* buf, mxml_node_t* x,
     append_text(buf, openBrl);
 
     // Update math style
-    old_style = update_math_style(buf, x);
+    row_buf = create_temporary_buffer(buf);
+    update_math_style(row_buf, x);
 
     // Translate every row in the matrix
-    row_buf = create_buffer();
     count   = 0;
     for (x = first_child_elem(x);  x;  x = next_elem(x))
     {
@@ -1546,9 +1612,6 @@ translate_matrix(StrBuf* buf, mxml_node_t* x,
 
     // Close matrix
     append_text(buf, closeBrl);
-
-    // Restore math style
-    set_math_style(buf, old_style);
 }
 
 
@@ -1599,10 +1662,13 @@ translate_terms_in_set(StrBuf* buf, mxml_node_t* x)
     int          old_style;
 
     // Update math style
-    old_style = update_math_style(buf, x);
+    term_buf = create_temporary_buffer(buf);
+    update_math_style(term_buf, x);
+
+    // Group terms first
+    group_terms_in_set(x);
 
     // Separately translate each term
-    term_buf = create_buffer();
     for (el = first_child_elem(x);  el;  el = next_elem(el))
     {
         mxml_node_t* sep = prev_elem(el);
@@ -1612,6 +1678,7 @@ translate_terms_in_set(StrBuf* buf, mxml_node_t* x)
         term_buf->mpStr[0] = '\0';
         set_unspaced(term_buf, 1);
         translate_children(term_buf, el);
+        strip_trailing_index_terminators(term_buf);
 
         if (sep)
         {
@@ -1636,9 +1703,6 @@ translate_terms_in_set(StrBuf* buf, mxml_node_t* x)
         append_text(buf, term_buf->mpStr);
     }
     destroy_buffer(term_buf);
-
-    // Restore math style
-    set_math_style(buf, old_style);
 }
 
 
@@ -1671,11 +1735,9 @@ translate_mfenced(StrBuf* buf, mxml_node_t* x)
     }
 
     // Translate set, which contains item separators
-    for (el = child;  el;  el = next_elem(el))
+    if (contains_item_separator(x))
     {
-        if (!is_item_separator(el))  continue;
         append_text(buf, open_brl);
-        group_terms_in_set(x);
         translate_terms_in_set(buf, x);
         append_text(buf, close_brl);
         return END_WITH_OTHER;
@@ -1696,6 +1758,7 @@ translate_mfrac(StrBuf* buf, mxml_node_t* x)
     mxml_node_t* num = first_child_elem(x);
     mxml_node_t* denom = num ? next_elem(num) : NULL;
     int          simple;
+    int          need_bracket = 1;
 
     // Retain spaces in <mfrac>
     set_unspaced(buf, 0);
@@ -1714,8 +1777,14 @@ translate_mfrac(StrBuf* buf, mxml_node_t* x)
         return END_WITH_LOWERED_DIGIT;
     }
 
+    // Determine whether the fraction requires bracket
+    if (is_identifier(num, NULL) && is_identifier(denom, NULL) &&
+            !is_extendable_ukmaths_node(prev_elem(x)) &&
+            !is_extendable_ukmaths_node(next_elem(x)))
+        need_bracket = 0;
+
     // Enclose the fraction in bracket
-    append_char(buf, '<');
+    if (need_bracket)  append_char(buf, '<');
 
     // Enclose complex numerator in brackets
     simple = is_simple_term(num);
@@ -1735,7 +1804,7 @@ translate_mfrac(StrBuf* buf, mxml_node_t* x)
     if (!simple)  append_char(buf, '>');
 
     // Enclose the fraction in bracket
-    append_char(buf, '>');
+    if (need_bracket)  append_char(buf, '>');
     return END_WITH_OTHER;
 }
 
@@ -1755,7 +1824,7 @@ translate_mroot(StrBuf* buf, mxml_node_t* x)
     append_char(buf, '%');
 
     // Translate root index as subscript
-    translate_subscript(buf, index);
+    translate_subscript(buf, index, NOT_UNDERSCRIPT);
 
     // Translate base
     return translate_base(buf, base);
@@ -1808,7 +1877,7 @@ translate_msub_munder(StrBuf* buf, mxml_node_t* x)
 
     // Translate index as subscript
     if (is_numeric_index(base))  append_char(buf, '*');       
-    return translate_subscript(buf, index);
+    return translate_subscript(buf, index, is_xml_element(x, "munder"));
 }
 
 
@@ -1829,7 +1898,7 @@ translate_msup_mover(StrBuf* buf, mxml_node_t* x)
             (find_math_style(style, base) == STYLE_NORMAL))
     {
         translate_mathematical_unit(buf, base);
-        translate_superscript(buf, index);
+        translate_superscript(buf, index, is_xml_element(x, "mover"));
         return END_WITH_UNIT_MI;
     }
 
@@ -1837,7 +1906,7 @@ translate_msup_mover(StrBuf* buf, mxml_node_t* x)
     translate_base(buf, base);
 
     // Translate index as superscript
-    return translate_superscript(buf, index);
+    return translate_superscript(buf, index, is_xml_element(x, "mover"));
 }
 
 
@@ -1859,10 +1928,10 @@ translate_msubsup_munderover(StrBuf* buf, mxml_node_t* x)
 
     // Translate subscript
     if (is_numeric_index(base))  append_char(buf, '*');       
-    translate_subscript(buf, sub);
+    translate_subscript(buf, sub, is_xml_element(x, "munderover"));
 
     // Translate superscript
-    return translate_superscript(buf, sup);
+    return translate_superscript(buf, sup, is_xml_element(x, "munderover"));
 }
 
 
@@ -1908,23 +1977,23 @@ translate_mmultiscripts(StrBuf* buf, mxml_node_t* x)
     append_char(buf, '<');
 
     // Translate pre-superscript
-    if (presup)  translate_superscript(buf, presup);
+    if (presup)  translate_superscript(buf, presup, NOT_OVERSCRIPT);
 
     // Translate pre-subscript
     if (presub)
     {
         if (is_numeric_index(presub))  append_char(buf, '*');       
-        translate_subscript(buf, presub);
+        translate_subscript(buf, presub, NOT_UNDERSCRIPT);
     }
 
     // Translate base
     translate_base(buf, base);
 
     // Translate post-subscript
-    if (postsub)  translate_subscript(buf, postsub);
+    if (postsub)  translate_subscript(buf, postsub, NOT_UNDERSCRIPT);
 
     // Translate post-superscript
-    if (postsup)  translate_superscript(buf, postsup);
+    if (postsup)  translate_superscript(buf, postsup, NOT_OVERSCRIPT);
 
     // Enclose translation in brackets to clarify index ownership
     append_char(buf, '>');
@@ -2000,7 +2069,7 @@ translate_mi(StrBuf* buf, mxml_node_t* x)
     }
 
     // Concatenate text from succeeding <mi> nodes
-    text = create_buffer();
+    text = create_temporary_buffer(buf);
     append_text(text, get_element_text(x));
     for (;;)
     {
@@ -2116,9 +2185,11 @@ brl2mml_to_ukmaths(const char* mml, int* used)
 {
     StrBuf*      buf = create_buffer();
     mxml_node_t* x = parse_mathml(mml);
+    int          len;
 
     // Perform translation and clean up
     translate_children(buf, x);
+    strip_trailing_index_terminators(buf);
     mxmlDelete(x);
 
     // Assume the XML data was fully consumed

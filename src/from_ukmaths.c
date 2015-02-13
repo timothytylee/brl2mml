@@ -2102,13 +2102,14 @@ parse_units(mxml_node_t* x, const char* brl, size_t len)
 }
 
 
-/** @brief Checks if a node can be concatenated to numerator or denominator.
+/** @brief Checks if a node can extend numerator or denominator in UK Maths.
     @return     Non-zero if the node can be concatenated.
+    @param x    Pointer to parent DOM element.
   */
-static int
-is_extendable_node(mxml_node_t* x)
+int
+is_extendable_ukmaths_node(mxml_node_t* x)
 {
-    const char* name = mxmlGetElement(x);
+    const char* name;
 
     // Ignore style and indices
     x = bypass_style_and_indices(x);
@@ -2180,7 +2181,7 @@ extend_numerator(mxml_node_t* num)
         }
         else
         {
-            if (!is_extendable_node(x))  break;
+            if (!is_extendable_ukmaths_node(x))  break;
         }
     }
 
@@ -2212,7 +2213,7 @@ extend_denominator(mxml_node_t* denom)
         }
         else
         {
-            if (!is_extendable_node(x))  break;
+            if (!is_extendable_ukmaths_node(x))  break;
         }
     }
 
@@ -2959,32 +2960,34 @@ static int
 parse_infinity(mxml_node_t* x, const char* brl, size_t len,
         const char* closeBrl)
 {
-    // Dot 123456 could be infinity symbol
-    while (starts_with(brl, len, "="))
-    {
-        int is_infinity = 0;
+    // Only dot 123456 could be infinity symbol
+    if (!starts_with(brl, len, "="))  return 0;
 
+    for (;;)
+    {
         ++brl;
         --len;
-        if (!len)  is_infinity = 1;
-        else
-        {
-            // Infinity symbol should not be followed by identifier
-            char c = *brl;
-            if ((c & 0x80) || strchr(" ]", c) ||
-                    starts_with(brl, len, ",1 ") ||
-                    starts_with(brl, len, closeBrl))
-                    is_infinity = 1;
-        }
 
-        if (is_infinity)
-        {
-            // Create <mo> node
-            new_text_element(x, "mo", "∞");
-            return 1;
-        }
+        // At end of braille, must be infinity symbol
+        if (!len)  break;
+
+        // At end of term, must be infinity symbol
+        if (starts_with(brl, len, " "))  break;
+        if (starts_with(brl, len, ",1"))  break;
+
+        // At end of script, must be infinity symbol
+        if (starts_with(brl, len, "]"))  break;
+
+        // At end of bracketed expression, must be infinity symbol
+        if (starts_with(brl, len, closeBrl))  break;
+
+        // None of the condition met
+        return 0;
     }
-    return 0;
+
+    // Create <mo> node
+    new_text_element(x, "mo", "∞");
+    return 1;
 }
 
 

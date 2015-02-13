@@ -280,7 +280,6 @@ mxml_node_t* new_unit_element(mxml_node_t* x, const char* unit);
 
 /// @}
 
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* __cplusplus */
