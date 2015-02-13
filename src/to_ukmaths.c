@@ -56,6 +56,7 @@ typedef struct
 {
     int mStyle;             ///< Current MathML style
     int mEndType;           ///< String buffer content identifier
+    int mUnspaced;          ///< Non-zero if optional spaces should be removed
 } MathData;
 
 
@@ -131,6 +132,25 @@ set_end_type(StrBuf* buf, int endType)
 {
     MathData* priv = get_private_data(buf);
     if (priv)  priv->mEndType = endType;
+}
+
+
+/// @brief Gets unspaced flag from string buffer
+static int
+is_unspaced(StrBuf* buf)
+{
+    MathData* priv = get_private_data(buf);
+    if (priv)  return priv->mUnspaced;
+    else       return 0;
+}
+
+
+/// @brief Sets unspaced flag in string buffer
+static void
+set_unspaced(StrBuf* buf, int unspaced)
+{
+    MathData* priv = get_private_data(buf);
+    if (priv)  priv->mUnspaced = unspaced;
 }
 
 
@@ -527,6 +547,10 @@ translate_children(StrBuf* buf, mxml_node_t* x)
         el = next;
     }
 
+    // Copy private data into temporary buffer
+    set_math_style(tmp_buf, get_math_style(buf));
+    set_unspaced(tmp_buf, is_unspaced(buf));
+
     // Translate each of the child node
     for (x = first_child_elem(x);  x;  x = next_elem(x))
         end_with = translate_math_node(tmp_buf, x);
@@ -539,9 +563,9 @@ translate_children(StrBuf* buf, mxml_node_t* x)
 }
 
 
-/// @brief Translates node as a base
+/// @brief Translates a mathematical expression and add brackets if necessary
 static int
-translate_base(StrBuf* buf, mxml_node_t* x)
+translate_expression(StrBuf* buf, mxml_node_t* x)
 {
     StrBuf* tmp_buf = create_buffer();
     int     simple = is_simple_term(x);
@@ -569,6 +593,16 @@ translate_base(StrBuf* buf, mxml_node_t* x)
     append_buffer_with_fount(buf, tmp_buf);
     destroy_buffer(tmp_buf);
     return end_with;
+}
+
+
+/// @brief Translates node as a base
+static int
+translate_base(StrBuf* buf, mxml_node_t* x)
+{
+    // Retain spaces in base expression
+    set_unspaced(buf, 0);
+    return translate_expression(buf, x);
 }
 
 
@@ -600,6 +634,9 @@ translate_overhead_symbol(StrBuf* buf, mxml_node_t* x)
 static int
 translate_subscript(StrBuf* buf, mxml_node_t* x)
 {
+    // Minimize spaces in subscript
+    set_unspaced(buf, 1);
+
     // Numeric indices are encoded as lowered braille digits
     if (is_numeric_index(x))
     {
@@ -610,7 +647,7 @@ translate_subscript(StrBuf* buf, mxml_node_t* x)
     // Dot 16 and 12456 encloses subscript
     append_char(buf, '*');
     if (!translate_overhead_symbol(buf, x))
-        translate_base(buf, x);
+        translate_expression(buf, x);
     append_char(buf, ']');
     return END_WITH_OTHER;
 }
@@ -620,6 +657,9 @@ translate_subscript(StrBuf* buf, mxml_node_t* x)
 static int
 translate_superscript(StrBuf* buf, mxml_node_t* x)
 {
+    // Minimize spaces in superscript
+    set_unspaced(buf, 1);
+
     // Overhead symbols are appended directly
     if (translate_overhead_symbol(buf, x))  return END_WITH_OTHER;
 
@@ -634,7 +674,7 @@ translate_superscript(StrBuf* buf, mxml_node_t* x)
     }
 
     // Dot 12456 ends superscript
-    translate_base(buf, x);
+    translate_expression(buf, x);
     append_char(buf, ']');
     return END_WITH_OTHER;
 }
@@ -697,16 +737,16 @@ translate_symbolic_operator(StrBuf* buf, const char* name)
         {";", ",2",   0, 0},
         {",", ",1",   0, 0},
 
-        // Dot 56 operators with leading space
-        {"×", ";8",  1, 0},
-        {"÷", ";4",  1, 0},
-        {"±", ";6-", 1, 0},
-        {"∓", ";-6", 1, 0},
-        {"=", ";7",  1, 0},
-        {"≜", ";;7", 1, 0},
-        {"+", ";6",  1, 0},
-        {"−", ";-",  1, 0},
-        {"-", ";-",  1, 0},
+        // Dot 56 operators with optional leading space
+        {"×", ";8",  -1, 0},
+        {"÷", ";4",  -1, 0},
+        {"±", ";6-", -1, 0},
+        {"∓", ";-6", -1, 0},
+        {"=", ";7",  -1, 0},
+        {"≜", ";;7", -1, 0},
+        {"+", ";6",  -1, 0},
+        {"−", ";-",  -1, 0},
+        {"-", ";-",  -1, 0},
 
         // Operators with leading space
         {"⌅", "^7",    1, 0},
@@ -814,7 +854,22 @@ translate_symbolic_operator(StrBuf* buf, const char* name)
 
         // Append leading space if necessary
         if (rec->mLeading && !has_trailing_space(buf))
-            append_char(buf, ' ');
+        {
+            int need_space = 0;
+            if (rec->mLeading == 1)
+            {
+                // Compulsory leading space is always needed
+                need_space = 1;
+            }
+            else if (!is_unspaced(buf))
+            {
+                // Retain optional leading space whenever possible
+                need_space = 1;
+            }
+
+            // Add leading space now
+            if (need_space)  append_char(buf, ' ');
+        }
 
         // Append braille translation
         if (style == STYLE_BOLD && strchr(";^\\", rec->mpBrl[0]))
@@ -1307,6 +1362,9 @@ translate_menclose(StrBuf* buf, mxml_node_t* x)
     const char* notation = mxmlElementGetAttr(x, "notation");
     int         simple = is_simple_term(x);
 
+    // Retain spaces in <menclose>
+    set_unspaced(buf, 0);
+
     // Dot 5 strikes out the next term
     if (strcmp(notation, "updiagonalstrike") == 0)
         append_char(buf, '"');
@@ -1388,14 +1446,15 @@ translate_matrix_row(StrBuf* buf, mxml_node_t* x)
 
     // Translate every cell in the row
     col_buf = create_buffer();
-    count   = 0;
+    count = 0;
     for (x = first_child_elem(x);  x;  x = next_elem(x))
     {
         // Look for <mtd> node
         if (!is_xml_element(x, "mtd"))  continue;
 
-        // Translate cell content
+        // Translate cell with minimum number of spaces
         col_buf->mpStr[0] = '\0';
+        set_unspaced(col_buf, 1);
         translate_children(col_buf, x);
 
         // Add brackets if there are spaces in the translation
@@ -1549,8 +1608,9 @@ translate_terms_in_set(StrBuf* buf, mxml_node_t* x)
         mxml_node_t* sep = prev_elem(el);
         if (!is_xml_element(el, "TERM"))  continue;
 
-        // Translation term
+        // Translation term with minimum number of spaces
         term_buf->mpStr[0] = '\0';
+        set_unspaced(term_buf, 1);
         translate_children(term_buf, el);
 
         if (sep)
@@ -1591,6 +1651,9 @@ translate_mfenced(StrBuf* buf, mxml_node_t* x)
     const char*  close_brl;
     mxml_node_t* child = first_child_elem(x);
     mxml_node_t* el;
+
+    // Retain spaces in <mfenced>
+    set_unspaced(buf, 0);
 
     // Translate opening bracket
     open_brl = bracket_to_brl(mxmlElementGetAttr(x, "open"));
@@ -1633,6 +1696,9 @@ translate_mfrac(StrBuf* buf, mxml_node_t* x)
     mxml_node_t* num = first_child_elem(x);
     mxml_node_t* denom = num ? next_elem(num) : NULL;
     int          simple;
+
+    // Retain spaces in <mfrac>
+    set_unspaced(buf, 0);
 
     // Make sure the required child elements are present
     if (!num)  return END_WITH_OTHER;
@@ -2030,10 +2096,12 @@ translate_math_node(StrBuf* buf, mxml_node_t* x)
         {
             // Update private data and invoke handler
             int old_style = update_math_style(buf, x);
+            int unspaced = is_unspaced(buf);
             int end_with = rec->mpHandler(buf, x);
 
             // Restore private data
             set_math_style(buf, old_style);
+            set_unspaced(buf, unspaced);
             set_end_type(buf, end_with);
             return end_with;
         }
