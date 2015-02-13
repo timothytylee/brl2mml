@@ -60,7 +60,7 @@ typedef struct
 
 
 /// Forward declare translate_math_node() for recursive invocation
-static long
+static int
 translate_math_node(StrBuf* buf, mxml_node_t* x);
 
 
@@ -509,11 +509,11 @@ strip_trailing_space(StrBuf* buf)
 
 
 /// @brief Translates child nodes
-static long
+static int
 translate_children(StrBuf* buf, mxml_node_t* x)
 {
     StrBuf* tmp_buf = create_buffer();
-    long    end_with = END_WITH_OTHER;
+    int     end_with = END_WITH_OTHER;
 
     // Remove <mspace>, <mphantom> and "apply function" <mo> nodes
     mxml_node_t* el = first_child_elem(x);
@@ -540,12 +540,12 @@ translate_children(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates node as a base
-static long
+static int
 translate_base(StrBuf* buf, mxml_node_t* x)
 {
     StrBuf* tmp_buf = create_buffer();
     int     simple = is_simple_term(x);
-    long    end_with;
+    int     end_with;
 
     // Protect standalone <mi>
     x = group_standalone_mi(x);
@@ -597,7 +597,7 @@ translate_overhead_symbol(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates node as a subscript
-static long
+static int
 translate_subscript(StrBuf* buf, mxml_node_t* x)
 {
     // Numeric indices are encoded as lowered braille digits
@@ -617,7 +617,7 @@ translate_subscript(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates node as a superscript
-static long
+static int
 translate_superscript(StrBuf* buf, mxml_node_t* x)
 {
     // Overhead symbols are appended directly
@@ -1293,7 +1293,7 @@ translate_mathematical_unit(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <math> node
-static long
+static int
 translate_math(StrBuf* buf, mxml_node_t* x)
 {
     return translate_children(buf, x);
@@ -1301,7 +1301,7 @@ translate_math(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <menclose> node
-static long
+static int
 translate_menclose(StrBuf* buf, mxml_node_t* x)
 {
     const char* notation = mxmlElementGetAttr(x, "notation");
@@ -1324,7 +1324,7 @@ translate_menclose(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <mrow> node
-static long
+static int
 translate_mrow(StrBuf* buf, mxml_node_t* x)
 {
     return translate_children(buf, x);
@@ -1332,7 +1332,7 @@ translate_mrow(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <mpadded> node
-static long
+static int
 translate_mpadded(StrBuf* buf, mxml_node_t* x)
 {
     return translate_children(buf, x);
@@ -1583,7 +1583,7 @@ translate_terms_in_set(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <mfenced> node
-static long
+static int
 translate_mfenced(StrBuf* buf, mxml_node_t* x)
 {
     const char*  sep = mxmlElementGetAttr(x, "separators");
@@ -1627,7 +1627,7 @@ translate_mfenced(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <mfrac> node
-static long
+static int
 translate_mfrac(StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* num = first_child_elem(x);
@@ -1675,7 +1675,7 @@ translate_mfrac(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <mroot> node
-static long
+static int
 translate_mroot(StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
@@ -1697,7 +1697,7 @@ translate_mroot(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <msqrt> node
-static long
+static int
 translate_msqrt(StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
@@ -1727,7 +1727,7 @@ translate_msqrt(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <msub> or <munder> node
-static long
+static int
 translate_msub_munder(StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
@@ -1747,7 +1747,7 @@ translate_msub_munder(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <msup> or <mover> node
-static long
+static int
 translate_msup_mover(StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
@@ -1776,7 +1776,7 @@ translate_msup_mover(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <msubsup> or <munderover> node
-static long
+static int
 translate_msubsup_munderover(StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
@@ -1801,7 +1801,7 @@ translate_msubsup_munderover(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <mmultiscripts> node
-static long
+static int
 translate_mmultiscripts(StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
@@ -1867,7 +1867,7 @@ translate_mmultiscripts(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <mtext> and <merror> node
-static long
+static int
 translate_mtext_merror(StrBuf* buf, mxml_node_t* x)
 {
     const char* str;
@@ -1904,7 +1904,7 @@ translate_mtext_merror(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <mo> node
-static long
+static int
 translate_mo(StrBuf* buf, mxml_node_t* x)
 {
     const char* name = get_element_text(x);
@@ -1920,7 +1920,7 @@ translate_mo(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <mi> node
-static long
+static int
 translate_mi(StrBuf* buf, mxml_node_t* x)
 {
     StrBuf* text;
@@ -1965,7 +1965,7 @@ translate_mi(StrBuf* buf, mxml_node_t* x)
 
 
 /// @brief Translates <mn> node
-static long
+static int
 translate_mn(StrBuf* buf, mxml_node_t* x)
 {
     const char* value = get_element_text(x);
@@ -1979,12 +1979,12 @@ translate_mn(StrBuf* buf, mxml_node_t* x)
 typedef struct
 {
     const char* mpTag;
-    long(*mpHandler)(StrBuf*, mxml_node_t*);
+    int(*mpHandler)(StrBuf*, mxml_node_t*);
 } HandlerRec;
 
 
 /// @brief Translates a MathML element
-static long
+static int
 translate_math_node(StrBuf* buf, mxml_node_t* x)
 {
     const HandlerRec handlers[] =
@@ -2017,29 +2017,29 @@ translate_math_node(StrBuf* buf, mxml_node_t* x)
     const HandlerRec* rec;
 
     // Ignore invalid node
-    if (!x)  return;
+    if (!x)  return get_end_type(buf);
 
     // Process only DOM elements
     name = mxmlGetElement(x);
-    if (!name)  return;
+    if (!name)  return get_end_type(buf);
 
     // Check all known handlers
     for (rec = handlers;  rec->mpTag;  ++rec)
     {
-    int     old_style;
+        if (strcmp(name, rec->mpTag) == 0)
+        {
+            // Update private data and invoke handler
+            int old_style = update_math_style(buf, x);
+            int end_with = rec->mpHandler(buf, x);
 
-        long end_with;
-        if (strcmp(name, rec->mpTag) != 0)  continue;
-
-        // Update math style
-        old_style = update_math_style(buf, x);
-        end_with = rec->mpHandler(buf, x);
-        set_math_style(buf, old_style);
-
-        // Restore math style
-        set_end_type(buf, end_with);
-        return end_with;
+            // Restore private data
+            set_math_style(buf, old_style);
+            set_end_type(buf, end_with);
+            return end_with;
+        }
     }
+
+    return get_end_type(buf);
 }
 
 
@@ -2048,7 +2048,6 @@ brl2mml_to_ukmaths(const char* mml, int* used)
 {
     StrBuf*      buf = create_buffer();
     mxml_node_t* x = parse_mathml(mml);
-    int          n;
 
     // Perform translation and clean up
     translate_children(buf, x);
