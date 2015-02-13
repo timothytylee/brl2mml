@@ -54,9 +54,7 @@ enum
 /// @brief Private data for resizable string buffer
 typedef struct
 {
-    StrBuf** mpExtras;      ///< Extra rows for matrix translation
-    int      mExtraCount;     ///< Number of extra rows in matrix
-    int      mEndType;      ///< String buffer content identifier
+    int mEndType;           ///< String buffer content identifier
 } MathData;
 
 
@@ -70,15 +68,6 @@ static void
 destroy_private_data(void* v)
 {
     MathData* priv = (MathData*)v;
-
-    // Release additional rows
-    if (priv->mpExtras)
-    {
-        int n;
-        for (n = priv->mExtraCount;  n--;  )
-            destroy_buffer(priv->mpExtras[n]);
-        free(priv->mpExtras);
-    }
 
     // Clean up
     free(priv);
@@ -122,97 +111,6 @@ set_end_type(StrBuf* buf, int endType)
 {
     MathData* priv = get_private_data(buf);
     if (priv)  priv->mEndType = endType;
-}
-
-
-/// @brief Gets the number of rows in string buffer
-static int
-get_row_count(StrBuf* buf)
-{
-    MathData* priv = get_private_data(buf);
-    if (priv)  return priv->mExtraCount + 1;
-    else       return 1;
-}
-
-
-/// @brief Ensures a string buffer has at least @p count number of rows
-static void
-set_minimum_row_count(StrBuf* buf, int count)
-{
-    // Add extra rows as needed
-    MathData* priv = get_private_data(buf);
-    if (!priv)  return;
-
-    // Do nothing if zero row is requested
-    if (!count)  return;
-
-    // Do nothing if there is sufficient capacity
-    if ((count - 1) <= priv->mExtraCount)  return;
-
-    // Expand pointer array
-    if (priv->mExtraCount == 0)
-        priv->mpExtras = (StrBuf**)calloc(count - 1, sizeof(StrBuf*));
-    else
-        priv->mpExtras = (StrBuf**)realloc(
-                priv->mpExtras, sizeof(StrBuf*) * (count - 1));
-
-    // Create new buffers
-    while ((count - 1) > priv->mExtraCount)
-    {
-        priv->mpExtras[priv->mExtraCount] = create_buffer();
-        ++priv->mExtraCount;
-    }
-}
-
-
-/// @brief Gets a row in a multi-line string buffer by its zero-based index
-static StrBuf*
-get_row(StrBuf* buf, int idx)
-{
-    MathData* priv = get_private_data(buf);
-
-    // Ensure there are sufficient number of rows in buffer
-    set_minimum_row_count(buf, idx + 1);
-
-    // row[0] is stored in original string buffer
-    if (idx == 0)  return buf;
-
-    // Otherwise return required row from string array
-    return priv->mpExtras[idx - 1];
-}
-
-
-/// @brief Pads all rows in buffer to same length
-static void
-equalize_rows(StrBuf* buf)
-{
-    int    n;
-    size_t len = strlen(get_row(buf, 0)->mpStr);
-    for (n = get_row_count(buf);  n--;  )
-    {
-        StrBuf* s = get_row(buf, n);
-        size_t  delta = len - strlen(s->mpStr);
-        while (delta--)  append_char(s, ' ');
-    }
-}
-
-
-/// @brief Appends multi-row string buffer to a string buffer
-static int
-append_buffer(StrBuf* buf, StrBuf* suffix)
-{
-    // Equalize sufficient number of rows in target buffer
-    int     count = get_row_count(suffix);
-    set_minimum_row_count(buf, count);
-    equalize_rows(buf);
-
-    // Append suffix
-    while (count--)
-    {
-        StrBuf* dst = get_row(buf, count);
-        StrBuf* src = get_row(suffix, count);
-        append_text(dst, src->mpStr);
-    }
 }
 
 
@@ -260,7 +158,7 @@ append_buffer_with_fount(StrBuf* buf, StrBuf* suffix)
     }
 
     // Append suffix now
-    append_buffer(buf, suffix);
+    append_text(buf, suffix->mpStr);
 }
 
 
@@ -2104,15 +2002,6 @@ brl2mml_to_ukmaths(const char* mml, int* used)
     // Perform translation and clean up
     translate_children(STYLE_ITALIC, buf, x);
     mxmlDelete(x);
-
-    // Merge extra rows
-    equalize_rows(buf);
-    for (n = 1;  n < get_row_count(buf);  ++n)
-    {
-        StrBuf* s = get_row(buf, n);
-        append_text(buf, "\n");
-        append_text(buf, s->mpStr);
-    }
 
     // Assume the XML data was fully consumed
     *used = strlen(mml);
