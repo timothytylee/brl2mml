@@ -371,25 +371,29 @@ is_simple_term(mxml_node_t* x)
         // <mfenced> are simple
         if (is_xml_element(x, "mfenced"))  return 1;
 
-        // <msub> or <msup> with simple base and numeric index are simple
+        // <msub> or <msup> with simple base and alphanumeric index are simple
         if (is_xml_element(x, "msub") || is_xml_element(x, "msup"))
         {
             x = first_child_elem(x);
             if (is_simple_term(x))
             {
                 x = next_elem(x);
+                if (is_identifier(x, NULL))  return 1;
                 if (is_numeric_index(x))  return 1;
             }
             return 0;
         }
 
-        // <munder> or <mover> with simple base and overhead symbol are simple
+        // <munder> or <mover> with simple base and alphanumeric index or
+        // overhead symbol are simple
         if (is_xml_element(x, "mover") || is_xml_element(x, "munder"))
         {
             x = first_child_elem(x);
             if (is_simple_term(x))
             {
                 x = next_elem(x);
+                if (is_identifier(x, NULL))  return 1;
+                if (is_numeric_index(x))  return 1;
                 if (is_overhead_mo(x))  return 1;
             }
             return 0;
@@ -1867,17 +1871,22 @@ translate_msub_munder(StrBuf* buf, mxml_node_t* x)
 {
     mxml_node_t* base = first_child_elem(x);
     mxml_node_t* index = base ? next_elem(base) : NULL;
+    int          is_underscript = 0;
 
     // Make sure the required child elements are present
     if (!base)  return END_WITH_OTHER;
     if (!index)  return END_WITH_OTHER;
+
+    // Check whether to explicitly translate as underscript
+    if (is_xml_element(x, "munder"))
+        is_underscript = is_simple_term(x);
 
     // Translate base
     translate_base(buf, base);
 
     // Translate index as subscript
     if (is_numeric_index(base))  append_char(buf, '*');       
-    return translate_subscript(buf, index, is_xml_element(x, "munder"));
+    return translate_subscript(buf, index, is_underscript);
 }
 
 
@@ -1888,17 +1897,22 @@ translate_msup_mover(StrBuf* buf, mxml_node_t* x)
     mxml_node_t* base = first_child_elem(x);
     mxml_node_t* index = base ? next_elem(base) : NULL;
     int          style = get_math_style(buf);
+    int          is_overscript = 0;
 
     // Make sure the required child elements are present
     if (!base)  return END_WITH_OTHER;
     if (!index)  return END_WITH_OTHER;
 
+    // Check whether to explicitly translate as overscript
+    if (is_xml_element(x, "mover"))
+        is_overscript = is_simple_term(x);
+
     // Handle mathematical units with power
-    if (is_xml_element(base, "mi") && is_numeric_index(index) &&
+    if (is_identifier(base, NULL) && is_numeric_index(index) &&
             (find_math_style(style, base) == STYLE_NORMAL))
     {
         translate_mathematical_unit(buf, base);
-        translate_superscript(buf, index, is_xml_element(x, "mover"));
+        translate_superscript(buf, index, is_overscript);
         return END_WITH_UNIT_MI;
     }
 
@@ -1906,7 +1920,7 @@ translate_msup_mover(StrBuf* buf, mxml_node_t* x)
     translate_base(buf, base);
 
     // Translate index as superscript
-    return translate_superscript(buf, index, is_xml_element(x, "mover"));
+    return translate_superscript(buf, index, is_overscript);
 }
 
 
@@ -1917,21 +1931,30 @@ translate_msubsup_munderover(StrBuf* buf, mxml_node_t* x)
     mxml_node_t* base = first_child_elem(x);
     mxml_node_t* sub = base ? next_elem(base) : NULL;
     mxml_node_t* sup = sub ? next_elem(sub) : NULL;
+    int          is_underscript = 0;
+    int          is_overscript = 0;
 
     // Make sure the required child elements are present
     if (!base)  return END_WITH_OTHER;
     if (!sub)  return END_WITH_OTHER;
     if (!sup)  return END_WITH_OTHER;
 
+    // Check whether to explicitly translate as underscript and overscript
+    if (is_xml_element(x, "munderover"))
+    {
+        is_underscript = 1;
+        is_overscript  = 1;
+    }
+
     // Translate base
     translate_base(buf, base);
 
     // Translate subscript
     if (is_numeric_index(base))  append_char(buf, '*');       
-    translate_subscript(buf, sub, is_xml_element(x, "munderover"));
+    translate_subscript(buf, sub, is_underscript);
 
     // Translate superscript
-    return translate_superscript(buf, sup, is_xml_element(x, "munderover"));
+    return translate_superscript(buf, sup, is_overscript);
 }
 
 
