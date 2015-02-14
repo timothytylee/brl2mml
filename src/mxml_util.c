@@ -310,9 +310,19 @@ static void
 recursively_convert_trigonometric_functions(mxml_node_t* x)
 {
     // Rename trigonometric <mi> to <mo>
-    if (is_xml_element(x, "mi") &&
-            is_trigonometric_operator(get_element_text(x)))
+    while (is_xml_element(x, "mi"))
+    {
+        // Do not convert mathematical units shown in normal text
+        const char* mathvariant = mxmlElementGetAttr(x, "mathvariant");
+        if (mathvariant && (strcmp(mathvariant, "normal") == 0))  break;
+
+        // Ignore non-trigonometric identifiers
+        if (!is_trigonometric_operator(get_element_text(x)))  break;
+
+        // Convert to <mo> now
         mxmlSetElement(x, "mo");
+        break;
+    }
 
     // Replace trigonometric functions in child nodes
     for (x = first_child_elem(x);  x;  x = next_elem(x))

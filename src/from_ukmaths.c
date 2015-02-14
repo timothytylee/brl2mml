@@ -94,6 +94,31 @@ is_brl_eol(const char* brl, size_t len)
 }
 
 
+/// @brief Checks for end of expression
+static int
+is_brl_end_of_expression(const char* brl, size_t len, const char* closeBrl)
+{
+    // At end of braille, must be end of expression
+    if (!len)  return 1;
+
+    // At end of line, must be end of expression
+    if (is_brl_eol(brl, len))  return 1;
+
+    // At end of term, must be end of expression
+    if (starts_with(brl, len, " "))  return 1;
+    if (starts_with(brl, len, ",1"))  return 1;
+
+    // At end of script, must be end of expression
+    if (starts_with(brl, len, "]"))  return 1;
+
+    // At closing bracket, must be end of expression
+    if (starts_with(brl, len, closeBrl))  return 1;
+
+    // None of the conditions met
+    return 0;
+}
+
+
 /// @brief Checks for mathematical hyphen and return its length
 static int
 is_brl_math_hyphen(const char* brl, size_t len)
@@ -676,7 +701,20 @@ parse_overhead_symbol(mxml_node_t* x, const char* brl, size_t len)
         {
             mxml_node_t* base = mxmlGetLastChild(x);
             if (base)
+            {
+                if (strchr("-'", oh[0][0]))
+                {
+                    // Do not add overhead dots to numbers
+                    if (is_xml_element(base, "mn"))  break;
+
+                    // Do not add overhead dots to pi
+                    if (is_identifier(base, "π"))  break;
+
+                    // Do not add overhead dots to e
+                    if (is_identifier(base, "e"))  break;
+                }
                 apply_operator(base, "mover", oh[1]);
+            }
             else
                 new_text_element(x, "mo", oh[1]);
 
@@ -1898,7 +1936,6 @@ parse_next_unit(mxml_node_t* x, const char* brl, size_t len, int count)
     {
         "^a",   "Å",
         "3p",   "%",
-        "-",    "㎭",
 
         // List terminator
         NULL
@@ -1992,55 +2029,84 @@ parse_next_unit(mxml_node_t* x, const char* brl, size_t len, int count)
 
 /// @brief Parses one or more mathematical units
 static int
-parse_units(mxml_node_t* x, const char* brl, size_t len)
+parse_units(mxml_node_t* x, const char* brl, size_t len,
+        const char* closeBrl)
 {
-    mxml_node_t* base;
+    const char* units[] =
+    {
+        // Monetary units
+        "4", "$",
+        "c", "¢",
+        "e", "€",
+        "l", "£",
+
+        // List terminator
+        NULL
+    };
+    const char** u;
     size_t       org_len = len;
     int          used = 0;
     int          count = 0;
+    mxml_node_t* prev;
 
-    // Dot 123 followed by digit is pound sterling sign
-    if (starts_with(brl, len, "l#") || starts_with(brl, len, "@l#") ||
-            (starts_with(brl, len, "l;") &&
-             starts_with_brl_latin(brl + 2, len - 2)))
+    // Do not parse unit inside bracketed expression
+    if (strlen(closeBrl) > 0)  return 0;
+
+    // Locate previous node
+    prev = bypass_style_and_indices(last_child_elem(x));
+
+    // Check all known monetary units
+    for (u = units;  *u;  u += 2)
     {
-        new_unit_element(x, "£");
-        return 1 + (strchr(brl, 'l') - brl);
+        const char* u_brl = brl;
+        size_t      u_len = len;
+        int         prev_ok = 0;
+        int         post_ok = 0;
+
+        // Check preceeding node
+        if (prev)
+        {
+            if (is_identifier(prev, NULL) ||
+                    is_xml_element(prev, "mn") ||
+                    is_xml_element(prev, "mfrac"))
+            {
+                // When preceeded by identifier or number, dot 4 must follow
+                if (!starts_with(u_brl, u_len, "@"))  continue;
+                ++u_brl;
+                --u_len;
+                prev_ok = 1;
+            }
+        }
+
+        // Check for monetary unit
+        if (!starts_with(u_brl, u_len, u[0]))  continue;
+
+        // Check succeeding braille for identifier or number
+        ++u_brl;
+        --u_len;
+        if (starts_with(u_brl, u_len, "#") ||
+                (starts_with(u_brl, u_len, ";")  &&
+                 starts_with_brl_latin(u_brl + 1, u_len - 1)))
+            post_ok = 1;
+
+        // Monetary unit must be attached to an identifier or number
+        if (!prev_ok && !post_ok)  continue;
+
+        // Create a node for the monetary unit
+        new_unit_element(x, u[1]);
+        return u_brl - brl;
     }
 
-    // Dot 256 followed by digit is dollar sign
-    if (starts_with(brl, len, "4#") || starts_with(brl, len, "@4#"))
-    {
-        new_unit_element(x, "$");
-        return 1 + (strchr(brl, '4') - brl);
-    }
-
-    // Previous term should be a numerical value
-    base = mxmlGetLastChild(x);
-    if (!base)  return 0;
-    while (mxmlGetElement(mxmlGetFirstChild(base)))
-        base = mxmlGetFirstChild(base);
-    if (!is_xml_element(base, "mn") &&
-            !is_identifier(base, "π") &&
-            !is_identifier(base, "e"))
+    // Previous term should be an identifier or a number
+    if (!prev)  return 0;
+    if (!is_identifier(prev, NULL) &&
+            !is_xml_element(prev, "mn") &&
+            !is_xml_element(prev, "mfrac"))
         return 0;
 
-    // Dot 4-15 is euro sign
-    if (starts_with(brl, len, "@e"))
-    {
-        new_unit_element(x, "€");
-        return 2;
-    }
-
-    // Dot 4-14 is cent sign
-    if (starts_with(brl, len, "@c"))
-    {
-        new_unit_element(x, "¢");
-        return 2;
-    }
-
     // Dot 36 is radian sign
-    if (starts_with(brl, len, "-") &&
+    if ((is_identifier(prev, "π") || is_identifier(prev, "e")) &&
+            starts_with(brl, len, "-") &&
             !starts_with(brl + 1, len - 1, "-"))
     {
         new_unit_element(x, "㎭");
@@ -2963,27 +3029,8 @@ parse_infinity(mxml_node_t* x, const char* brl, size_t len,
     // Only dot 123456 could be infinity symbol
     if (!starts_with(brl, len, "="))  return 0;
 
-    for (;;)
-    {
-        ++brl;
-        --len;
-
-        // At end of braille, must be infinity symbol
-        if (!len)  break;
-
-        // At end of term, must be infinity symbol
-        if (starts_with(brl, len, " "))  break;
-        if (starts_with(brl, len, ",1"))  break;
-
-        // At end of script, must be infinity symbol
-        if (starts_with(brl, len, "]"))  break;
-
-        // At end of bracketed expression, must be infinity symbol
-        if (starts_with(brl, len, closeBrl))  break;
-
-        // None of the condition met
-        return 0;
-    }
+    // Infinity symbol must be at end of expression
+    if (!is_brl_end_of_expression(brl + 1, len - 1, closeBrl))  return 0;
 
     // Create <mo> node
     new_text_element(x, "mo", "∞");
@@ -3416,7 +3463,7 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
         if (!used)  used = parse_number(x, brl, len);
 
         // Try to parse unit
-        if (!used)  used = parse_units(x, brl, len);
+        if (!used)  used = parse_units(x, brl, len, closeBrl);
 
         // Try to parse superscript
         if (!used)  used = parse_superscript(x, brl, len, closeBrl);

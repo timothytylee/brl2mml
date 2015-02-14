@@ -1386,12 +1386,20 @@ translate_mathematical_unit(StrBuf* buf, mxml_node_t* x)
     if (!strlen(text))  return 0;
     for (u = units;  *u;  u += 2)
     {
+        char b0 = u[1][0];
         if (strcmp(text, u[0]) != 0)  continue;
-        if ((u[1][0] == '0') && (get_end_type(buf) == END_WITH_LOWERED_DIGIT))
+
+        // Strip dot 4 from monetary unit at start of translation
+        if ((b0 == '@') && has_trailing_space(buf))
         {
-            // Add '+' to prevent misinterpretation of degree as subscript
-            append_char(buf, '+');
+            append_text(buf, u[1] + 1);
+            return 1;
         }
+
+        // Add '+' to prevent misinterpretation of degree as subscript
+        if ((b0 == '0') && (get_end_type(buf) == END_WITH_LOWERED_DIGIT))
+            append_char(buf, '+');
+
         append_text(buf, u[1]);
         return 1;
     }
@@ -2074,6 +2082,9 @@ translate_mo(StrBuf* buf, mxml_node_t* x)
     // Attempt to translate as word operator
     if (translate_word_operator(buf, name))
         return END_WITH_WORD_MO;
+
+    // Return existing style in buffer if translation failed
+    return get_math_style(buf);
 }
 
 
