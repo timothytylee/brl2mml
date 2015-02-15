@@ -264,9 +264,17 @@ new_text_element(mxml_node_t* x, const char* name, const char* text)
 mxml_node_t*
 new_unit_element(mxml_node_t* x, const char* unit)
 {
-    mxml_node_t* mspace = mxmlNewElement(x, "mspace");
-    mxml_node_t* mi = new_text_element(x, "mi", unit);
-    mxmlElementSetAttr(mspace, "width", "0.25em");
+    mxml_node_t* mi;
+
+    // Pad the unit element
+    if (last_child_elem(x))
+    {
+        mxml_node_t* mspace = mxmlNewElement(x, "mspace");
+        mxmlElementSetAttr(mspace, "width", "0.25em");
+    }
+
+    // Create the unit element now
+    mi = new_text_element(x, "mi", unit);
     mxmlElementSetAttr(mi, "mathvariant", "normal");
     return mi;
 }

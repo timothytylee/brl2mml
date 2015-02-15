@@ -1862,6 +1862,92 @@ parse_letter(mxml_node_t* x, const char* brl, size_t len,
 }
 
 
+/// @brief Parses currency
+static int
+parse_currency(mxml_node_t* x, const char* brl, size_t len,
+        const char* closeBrl)
+{
+    const char* currencies[] =
+    {
+        // Monetary units
+        "4", "$",
+        "c", "¢",
+        "e", "€",
+        "l", "£",
+
+        // List terminator
+        NULL
+    };
+    const char** cu;
+    mxml_node_t* prev;
+
+    // Do not parse currency inside bracketed expression
+    if (strlen(closeBrl) > 0)  return 0;
+
+    // Locate previous node
+    prev = bypass_style_and_indices(last_child_elem(x));
+
+    // Check all known monetary units
+    for (cu = currencies;  *cu;  cu += 2)
+    {
+        const char* cu_brl = brl;
+        size_t      cu_len = len;
+        int         prev_ok = 0;
+        int         post_ok = 0;
+
+        // Check preceeding node
+        if (prev)
+        {
+            if (is_identifier(prev, NULL) ||
+                    is_xml_element(prev, "mn") ||
+                    is_xml_element(prev, "mfrac"))
+            {
+                // When preceeded by identifier or number, dot 4 must follow
+                if (!starts_with(cu_brl, cu_len, "@"))  continue;
+                ++cu_brl;
+                --cu_len;
+                prev_ok = 1;
+            }
+        }
+
+        // Check for monetary unit
+        if (!starts_with(cu_brl, cu_len, cu[0]))  continue;
+
+        // Check succeeding braille for identifier or number
+        ++cu_brl;
+        --cu_len;
+        if (starts_with(cu_brl, cu_len, "#") ||
+                (starts_with(cu_brl, cu_len, ";")  &&
+                 starts_with_brl_latin(cu_brl + 1, cu_len - 1)))
+            post_ok = 1;
+
+        // Monetary unit must be attached to an identifier or number
+        if (!prev_ok && !post_ok)  continue;
+
+        // Setup a node for the monetary unit
+        if (prev_ok && is_identifier(prev, NULL))
+        {
+            // Replace preceeding identifier with a unit element
+            StrBuf* tmp_str = create_buffer();
+            append_text(tmp_str, get_element_text(prev));
+            append_text(tmp_str, cu[1]);
+            mxmlDelete(prev);
+            new_unit_element(x, tmp_str->mpStr);
+            destroy_buffer(tmp_str);
+        }
+        else
+        {
+            // Otherwise create a new node for the monetary unit
+            new_unit_element(x, cu[1]);
+        }
+        return cu_brl - brl;
+    }
+
+    // No match found
+    return 0;
+}
+
+
 /// @brief Parses next letter in unit
 static int
 parse_next_unit_letter(StrBuf* buf, const char* brl, size_t len, int* fount)
@@ -2032,18 +2118,6 @@ static int
 parse_units(mxml_node_t* x, const char* brl, size_t len,
         const char* closeBrl)
 {
-    const char* units[] =
-    {
-        // Monetary units
-        "4", "$",
-        "c", "¢",
-        "e", "€",
-        "l", "£",
-
-        // List terminator
-        NULL
-    };
-    const char** u;
     size_t       org_len = len;
     int          used = 0;
     int          count = 0;
@@ -2054,51 +2128,9 @@ parse_units(mxml_node_t* x, const char* brl, size_t len,
 
     // Locate previous node
     prev = bypass_style_and_indices(last_child_elem(x));
-
-    // Check all known monetary units
-    for (u = units;  *u;  u += 2)
-    {
-        const char* u_brl = brl;
-        size_t      u_len = len;
-        int         prev_ok = 0;
-        int         post_ok = 0;
-
-        // Check preceeding node
-        if (prev)
-        {
-            if (is_identifier(prev, NULL) ||
-                    is_xml_element(prev, "mn") ||
-                    is_xml_element(prev, "mfrac"))
-            {
-                // When preceeded by identifier or number, dot 4 must follow
-                if (!starts_with(u_brl, u_len, "@"))  continue;
-                ++u_brl;
-                --u_len;
-                prev_ok = 1;
-            }
-        }
-
-        // Check for monetary unit
-        if (!starts_with(u_brl, u_len, u[0]))  continue;
-
-        // Check succeeding braille for identifier or number
-        ++u_brl;
-        --u_len;
-        if (starts_with(u_brl, u_len, "#") ||
-                (starts_with(u_brl, u_len, ";")  &&
-                 starts_with_brl_latin(u_brl + 1, u_len - 1)))
-            post_ok = 1;
-
-        // Monetary unit must be attached to an identifier or number
-        if (!prev_ok && !post_ok)  continue;
-
-        // Create a node for the monetary unit
-        new_unit_element(x, u[1]);
-        return u_brl - brl;
-    }
+    if (!prev)  return 0;
 
     // Previous term should be an identifier or a number
-    if (!prev)  return 0;
     if (!is_identifier(prev, NULL) &&
             !is_xml_element(prev, "mn") &&
             !is_xml_element(prev, "mfrac"))
@@ -3461,6 +3493,9 @@ parse_expr(mxml_node_t* x, const char* brl, size_t len,
 
         // Try to parse number
         if (!used)  used = parse_number(x, brl, len);
+
+        // Try to parse currencies
+        if (!used)  used = parse_currency(x, brl, len, closeBrl);
 
         // Try to parse unit
         if (!used)  used = parse_units(x, brl, len, closeBrl);

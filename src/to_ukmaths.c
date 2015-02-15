@@ -380,6 +380,8 @@ is_simple_term(mxml_node_t* x)
                 x = next_elem(x);
                 if (is_identifier(x, NULL))  return 1;
                 if (is_numeric_index(x))  return 1;
+                if (is_operator(x, "+"))  return 1;
+                if (is_operator(x, "-"))  return 1;
             }
             return 0;
         }
@@ -1206,6 +1208,12 @@ lookup_literal(int style, const char* str, const char** fount)
         {"Ψ", "y", "_", "^_"},
         {"Ω", "w", "_", "^_"},
 
+        // Monetary symbols
+        {"$", "@4", NULL, NULL},
+        {"¢", "@c", NULL, NULL},
+        {"€", "@e", NULL, NULL},
+        {"£", "@l", NULL, NULL},
+
         // Symbols
         {"?", "--",  NULL, NULL},
         {"…", "'''", NULL, NULL},
@@ -1360,10 +1368,10 @@ translate_mathematical_unit(StrBuf* buf, mxml_node_t* x)
     const char* units[] =
     {
         // Units without leading space
-        "£",    "@l",
         "$",    "@4",
         "¢",    "@c",
         "€",    "@e",
+        "£",    "@l",
         "/",    "_/",
         "°",    "0",
         "′",    ".",
@@ -1410,7 +1418,7 @@ translate_mathematical_unit(StrBuf* buf, mxml_node_t* x)
         if (strcmp(tail_of_buffer(buf, 1), "/") != 0)
             append_char(buf, '\'');
     }
-    else
+    else if (!has_trailing_space(buf))
         append_char(buf, ' ');
     if ((text[0] >= 'a' && text[0] <= 'z') &&
             ((text[1] == '\0') || (text[1] >= 'A' && text[1] <= 'Z')))
