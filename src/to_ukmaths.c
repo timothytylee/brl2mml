@@ -228,6 +228,7 @@ append_buffer_with_fount(StrBuf* buf, StrBuf* suffix)
 
     // Append suffix now
     append_text(buf, suffix->mpStr);
+    set_end_type(buf, get_end_type(suffix));
 }
 
 
@@ -697,8 +698,13 @@ translate_subscript(StrBuf* buf, mxml_node_t* x, int isUnder)
     set_unspaced(buf, 1);
 
     // Numeric indices are encoded as lowered braille digits
-    if (is_numeric_index(x))
+    if (!isUnder && is_numeric_index(x))
     {
+        // Use dot 16 to isolate from other lowered digits
+        if (get_end_type(buf) == END_WITH_LOWERED_DIGIT)
+            append_char(buf, '*');
+
+        // Translate now
         translate_numeric_index(buf, x);
         return END_WITH_LOWERED_DIGIT;
     }
@@ -1374,6 +1380,8 @@ translate_mathematical_unit(StrBuf* buf, mxml_node_t* x)
         "£",    "@l",
         "/",    "_/",
         "°",    "0",
+        "℃",    "0,c",
+        "℉",    "0,f",
         "′",    ".",
         "″",    "_",
         "㎭",   "-",
@@ -1542,6 +1550,7 @@ translate_matrix_row(StrBuf* buf, mxml_node_t* x)
 
         // Translate cell with minimum number of spaces
         col_buf->mpStr[0] = '\0';
+        set_end_type(col_buf, END_WITH_OTHER);
         set_unspaced(col_buf, 1);
         translate_children(col_buf, x);
         strip_trailing_index_terminators(col_buf);
@@ -1696,6 +1705,7 @@ translate_terms_in_set(StrBuf* buf, mxml_node_t* x)
 
         // Translation term with minimum number of spaces
         term_buf->mpStr[0] = '\0';
+        set_end_type(term_buf, END_WITH_OTHER);
         set_unspaced(term_buf, 1);
         translate_children(term_buf, el);
         strip_trailing_index_terminators(term_buf);

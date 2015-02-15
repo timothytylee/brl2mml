@@ -474,7 +474,19 @@ parse_number(mxml_node_t* x, const char* brl, size_t len)
     }
 
     // Parse degree, minute, second and radian sign
-    if (starts_with(brl, len, "0"))
+    if (starts_with(brl, len, "0,c"))
+    {
+        // Dot 356 followed by capital C is degree Celsius
+        new_unit_element(x, "℃");
+        len -= 3;
+    }
+    else if (starts_with(brl, len, "0,f"))
+    {
+        // Dot 356 followed by capital F is degree Fahrenheit
+        new_unit_element(x, "℉");
+        len -= 3;
+    }
+    else if (starts_with(brl, len, "0"))
     {
         // Dot 356 is degree sign
         new_unit_element(x, "°");
