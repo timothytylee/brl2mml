@@ -57,8 +57,12 @@ AM_PROG_CC_C_O
 # Setup automake targets
 AC_CONFIG_FILES([Makefile src/Makefile tests/Makefile])
 
+# Bundled verison of Mini-XML
+MXML_VERSION=2.9
+AC_SUBST(MXML_VERSION)
+
 # Build Mini-XML as nested package
-AC_CONFIG_SUBDIRS([mxml-2.8])
+AC_CONFIG_SUBDIRS([mxml-2.9])
 
 # Generate output files
 AC_OUTPUT

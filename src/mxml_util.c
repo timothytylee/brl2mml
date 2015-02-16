@@ -19,6 +19,13 @@
 #include "private.h"
 
 
+/// Import mathml_entity_callback() from "mathml_entity.c"
+int mathml_entity_callback(const char* name);
+
+
+static int gSetupCallback = 0;
+
+
 mxml_node_t*
 first_child_elem(mxml_node_t* x)
 {
@@ -441,6 +448,13 @@ recursively_normalize_mtable(mxml_node_t* x)
 mxml_node_t*
 parse_mathml(const char* mml)
 {
+    // Setup entity callback for MathML
+    if (!gSetupCallback)
+    {
+        gSetupCallback = 1;
+        mxmlEntityAddCallback(mathml_entity_callback);
+    }
+
     // Parse XML into DOM tree
     mxml_node_t* x = mxmlNewElement(MXML_NO_PARENT, "xml");
     mxmlLoadString(x, mml, MXML_NO_CALLBACK);
