@@ -338,14 +338,46 @@ recursively_convert_trigonometric_functions(mxml_node_t* x)
 }
 
 
+/// @brief Recursively fixes format of mathematical units
+static void
+recursively_fix_mathematical_units(mxml_node_t* x)
+{
+    // Add "mathvariant" attribute to mathematical unit
+    while (is_xml_element(x, "mi") || is_xml_element(x, "mo"))
+    {
+        // Convert only mathematical units
+        if (!is_mathematical_unit(get_element_text(x)))  break;
+
+        // Convert to <mi> now
+        mxmlSetElement(x, "mi");
+        mxmlElementSetAttr(x, "mathvariant", "normal");
+        break;
+    }
+
+    // Convert units in child nodes
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
+        recursively_fix_mathematical_units(x);
+}
+
+
 /// @brief Recursively ensure <mtable> is wrapped in <mfenced>
 static mxml_node_t*
 recursively_normalize_mtable(mxml_node_t* x)
 {
-    // Ensure <mtable> is wrapped in <mfenced> in child nodes
+    const char* ends[] =
+    {
+        "(",  ")",
+        "[",  "]",
+        "{",  "}",
+        "〈", "〉",
+        "|",  "|",
+        "‖",  "‖",
+
+        // List terminator
+        NULL
+    };
+    const char** e;
     mxml_node_t* y;
-    for (y = first_child_elem(x);  y;  y = next_elem(y))
-        y = recursively_remove_redundant_mrow(y);
 
     // Perform check on <mtable>
     if (is_xml_element(x, "mtable"))
@@ -373,18 +405,21 @@ recursively_normalize_mtable(mxml_node_t* x)
             const char*  openAttr = "[";
             const char*  closeAttr = "]";
 
-            // Handle matrices enclosed in "|" or "‖"
-            if (is_operator(prev, "|") && is_operator(next, "|"))
+            // Handle <mtable> surrounded by brackets in <mo>
+            if (prev && next)
             {
-                openAttr = closeAttr = "|";
-                mxmlDelete(prev);
-                mxmlDelete(next);
-            }
-            if (is_operator(prev, "‖") && is_operator(next, "‖"))
-            {
-                openAttr = closeAttr = "‖";
-                mxmlDelete(prev);
-                mxmlDelete(next);
+                for (e = ends;  *e;  e += 2)
+                {
+                    if (!is_operator(prev, e[0]))  continue;
+                    if (!is_operator(next, e[1]))  continue;
+
+                    // Remove surrounding brackets with <mfenced> attributes
+                    mxmlDelete(prev);
+                    mxmlDelete(next);
+                    openAttr  = e[0];
+                    closeAttr = e[1];
+                    break;
+                }
             }
 
             // Wrap <mtable> now
@@ -393,6 +428,10 @@ recursively_normalize_mtable(mxml_node_t* x)
             mxmlElementSetAttr(x, "close", closeAttr);
         }
     }
+
+    // Ensure <mtable> is wrapped in <mfenced> in child nodes
+    for (y = first_child_elem(x);  y;  y = next_elem(y))
+        y = recursively_normalize_mtable(y);
 
     // Node might have been replaced, so return to caller
     return x;
@@ -410,6 +449,7 @@ parse_mathml(const char* mml)
     recursively_replace_mstyle(x);
     recursively_remove_redundant_mrow(x);
     recursively_convert_trigonometric_functions(x);
+    recursively_fix_mathematical_units(x);
     recursively_normalize_mtable(x);
 
     // Return DOM tree to caller

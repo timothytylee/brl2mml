@@ -3076,8 +3076,8 @@ parse_infinity(mxml_node_t* x, const char* brl, size_t len,
     // Infinity symbol must be at end of expression
     if (!is_brl_end_of_expression(brl + 1, len - 1, closeBrl))  return 0;
 
-    // Create <mo> node
-    new_text_element(x, "mo", "∞");
+    // Create <mi> node
+    new_text_element(x, "mi", "∞");
     return 1;
 }
 
@@ -3216,8 +3216,11 @@ parse_plus_minus_index(mxml_node_t* x, const char* brl, size_t len,
     // Add superscript
     apply_operator(base, "msup", index);
 
+    // Merge subscript and superscript into <msubsup>
+    merge_msub_msup(mxmlGetLastChild(x));
+
     // Report number of bytes used
-    return (org_len - len);
+    return org_len - len;
 }
 
 

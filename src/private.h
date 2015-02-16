@@ -154,6 +154,13 @@ const char* next_utf8(const char* str);
     @param str  NULL-terminated string to check.
   */
 int is_trigonometric_operator(const char* str);
+
+/** @brief Checks if a string is a mathematical unit.
+    @return     Non-zero if the string is a mathematical unit.
+    @return     Zero if the string is not a mathematical unit.
+    @param str  NULL-terminated string to check.
+  */
+int is_mathematical_unit(const char* str);
 /// @}
 
 

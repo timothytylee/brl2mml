@@ -232,7 +232,7 @@ is_trigonometric_operator(const char* str)
         "sin",  "cos",   "tan",  "sec",  "cosec",  "cot",
         "sinh", "cosh",  "tanh", "sech", "cosech", "coth",
         "log",  "colog", "grad", "curl", "div",
-        "ln",   "exp",  
+        "ln",   "exp",
 
         // List terminator
         NULL
@@ -242,6 +242,27 @@ is_trigonometric_operator(const char* str)
     // Check all known trigonometric operators
     for (op = operators;  *op;  ++op)
         if (strcasecmp(str, *op) == 0)  return strlen(*op);
+
+    // Match failed
+    return 0;
+}
+
+
+int
+is_mathematical_unit(const char* str)
+{
+    const char* units[] =
+    {
+        "$",  "¢",  "€",  "£",  "/",  "°",  "%", "℃",  "℉",  "㎭", "Å",
+
+        // List terminator
+        NULL
+    };
+    const char** u;
+
+    // Check all known trigonometric units
+    for (u = units;  *u;  ++u)
+        if (strcasecmp(str, *u) == 0)  return strlen(*u);
 
     // Match failed
     return 0;

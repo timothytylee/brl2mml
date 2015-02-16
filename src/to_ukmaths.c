@@ -778,7 +778,6 @@ translate_symbolic_operator(StrBuf* buf, const char* name)
         {"∮", "@!",   0, 0},
         {"&", "@&",   0, 0},
         {"∂", "@d",   0, 0},
-        {"∞", "=",    0, 0},
         {"#", "_8",   0, 0},
         {"∐", "_v",   0, 0},
         {"‖", "__",   0, 0},
@@ -1221,6 +1220,7 @@ lookup_literal(int style, const char* str, const char** fount)
         {"£", "@l", NULL, NULL},
 
         // Symbols
+        {"∞", "=",   NULL, NULL},
         {"?", "--",  NULL, NULL},
         {"…", "'''", NULL, NULL},
         {"(", "7",   NULL, NULL},
