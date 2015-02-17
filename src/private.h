@@ -195,6 +195,11 @@ mxml_node_t* prev_elem(mxml_node_t* x);
   */
 mxml_node_t* next_elem(mxml_node_t* x);
 
+/** @brief Removes all child nodes from a DOM element.
+    @param x        Pointer to parent DOM element.
+  */
+void delete_children(mxml_node_t* x);
+
 /** @brief Gets the text value of the first child.
     @return     NULL-terminated text value.  Blank string if there is none.
     @param x    Pointer to a DOM element.

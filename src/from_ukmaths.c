@@ -3432,9 +3432,6 @@ postprocess_expr(mxml_node_t* x)
     // Replace implicit separators with actual ones
     fix_implicit_separators(x);
 
-    // Remove column and row markers
-    recursively_remove_markers(x);
-
     // Pad <mtext> with <mspace>
     fix_text_spacing(x);
 
@@ -3732,11 +3729,61 @@ recursively_convert_trigonometric_operators(mxml_node_t* x)
 }
 
 
+/// @brief Converts h with overbar to dirac symbols
+static void
+recursively_convert_h_overbar(mxml_node_t* x)
+{
+    // Rename trigonometric <mo> to <mi>
+    mxml_node_t* first_child = first_child_elem(x);
+    mxml_node_t* last_child = last_child_elem(x);
+    while (is_xml_element(x, "mover") &&
+            is_identifier(first_child, "h") && is_operator(last_child, "¯"))
+    {
+        // Remove existing child nodes
+        delete_children(x);
+
+        // Convert to <mi>
+        mxmlSetElement(x, "mi");
+        mxmlNewText(x, 0, "ℏ");
+        return;
+    }
+
+    // Replace h overbars in child nodes
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
+        recursively_convert_h_overbar(x);
+}
+
+
 char*
 brl2mml_from_ukmaths(const char* brl, int* used)
 {
-    char*  mml = NULL;
-    size_t len = strlen(brl);
+    char*       mml = NULL;
+    size_t      len = strlen(brl);
+    const char* ptr = brl;
+
+    // Trunate braille to first empty line
+    for (;;)
+    {
+        const char* p;
+
+        // Look for end of current line
+        const char* eol = strchr(ptr, '\n');
+        if (!eol)  break;
+
+        // Test for blank line
+        for (p = ptr;  p != eol;  ++p)
+            if (!strchr(" \r\t", *p))  break;
+
+        // Truncate braille
+        if (p == eol)
+        {
+            len = eol - brl + 1;
+            break;
+        }
+
+        // Proceed to next line
+        ptr = eol + 1;
+    }
 
     // Parse UK Maths braille and convert to <math> node
     mxml_node_t* math = mxmlNewElement(MXML_NO_PARENT, "math");
@@ -3744,7 +3791,15 @@ brl2mml_from_ukmaths(const char* brl, int* used)
     mxmlElementSetAttr(math, "xmlns", "http://www.w3.org/1998/Math/MathML");
     mxmlElementSetAttr(math, "display", "block");
     *used = parse_expr(mrow, brl, len, BASE_EXPR, "");
+
+    // Remove left over markers
+    recursively_remove_markers(mrow);
+
+    // Convert trigonometric <mo> to <mi>
     recursively_convert_trigonometric_operators(mrow);
+
+    // Convert h with overbar to dirac symbol
+    recursively_convert_h_overbar(mrow);
 
     // Consume end-of-line
     *used += is_brl_eol(brl + *used, len - *used); 

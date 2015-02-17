@@ -59,6 +59,18 @@ next_elem(mxml_node_t* x)
 }
 
 
+void delete_children(mxml_node_t* x)
+{
+    mxml_node_t* el = mxmlGetFirstChild(x);
+    while (el)
+    {
+        mxml_node_t* next = mxmlGetNextSibling(el);
+        mxmlDelete(el);
+        el = next;
+    }
+}
+
+
 const char*
 get_element_text(mxml_node_t* x)
 {
@@ -342,6 +354,29 @@ recursively_convert_trigonometric_functions(mxml_node_t* x)
 }
 
 
+/// @brief Recursively converts dirac symbol to h with overbar
+static void
+recursively_convert_dirac_symbols(mxml_node_t* x)
+{
+    // Replace ℏ with h-bar
+    if (strcmp(get_element_text(x), "ℏ") == 0)
+    {
+        // Remove existing child nodes
+        delete_children(x);
+
+        // Convert to <mover>
+        mxmlSetElement(x, "mover");
+        new_text_element(x, "mi", "h");
+        new_text_element(x, "mo", "¯");
+        return;
+    }
+
+    // Replace dirac symbols in child nodes
+    for (x = first_child_elem(x);  x;  x = next_elem(x))
+        recursively_convert_dirac_symbols(x);
+}
+
+
 /// @brief Recursively fixes format of mathematical units
 static void
 recursively_fix_mathematical_units(mxml_node_t* x)
@@ -460,6 +495,7 @@ parse_mathml(const char* mml)
     recursively_replace_mstyle(x);
     recursively_remove_redundant_mrow(x);
     recursively_convert_trigonometric_functions(x);
+    recursively_convert_dirac_symbols(x);
     recursively_fix_mathematical_units(x);
     recursively_normalize_mtable(x);
 
