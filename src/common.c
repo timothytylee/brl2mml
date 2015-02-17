@@ -231,7 +231,7 @@ is_trigonometric_operator(const char* str)
     {
         "sin",  "cos",   "tan",  "sec",  "cosec",  "cot",
         "sinh", "cosh",  "tanh", "sech", "cosech", "coth",
-        "log",  "colog", "grad", "curl", "div",
+        "log",  "colog", "grad", "curl", "rot",    "div",
         "ln",   "exp",
 
         // List terminator

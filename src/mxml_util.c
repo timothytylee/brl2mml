@@ -17,10 +17,7 @@
 
 #include "brl2mml.h"
 #include "private.h"
-
-
-/// Import mathml_entity_callback() from "mathml_entity.c"
-int mathml_entity_callback(const char* name);
+#include "mathml_entity.h"
 
 
 static int gSetupCallback = 0;

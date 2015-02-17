@@ -1,7 +1,7 @@
 /**********************************************************************
 *
-*  Filename:    mathml_entity.c
-*  Description: Source file for mathml_entity_callback() function
+*  Filename:    mathml_entity.h
+*  Description: Include file for mathml_entity_callback() function
 *
 *  This file is covered by the GNU General Public License.
 *  See licence.txt for more details.
@@ -10,12 +10,6 @@
 *  Hong Kong Blind Union.
 *
 **********************************************************************/
-
-
-#include <stdlib.h>
-#include <string.h>
-
-#include "private.h"
 
 
 typedef struct
@@ -2066,7 +2060,7 @@ static const int gEntityCount = sizeof(gpEntities) / sizeof(gpEntities[0]);
 
 
 /// @brief Mini-XML entity callback function
-int
+static int
 mathml_entity_callback(const char* name)
 {
     int result = 0;

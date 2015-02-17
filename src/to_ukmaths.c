@@ -775,7 +775,10 @@ translate_symbolic_operator(StrBuf* buf, const char* name)
         {"∇", "_0",   0, 0},
         {"∠", "_[",   0, 0},
         {"∫", "!",    0, 0},
+        {"∬", "!!",   0, 0},
+        {"∭", "!!!",  0, 0},
         {"∮", "@!",   0, 0},
+        {"∯", "@!!",  0, 0},
         {"&", "@&",   0, 0},
         {"∂", "@d",   0, 0},
         {"#", "_8",   0, 0},
@@ -917,8 +920,18 @@ translate_symbolic_operator(StrBuf* buf, const char* name)
     const SymbolRec* rec;
     int              style = get_math_style(buf);
     int              unspaced = is_unspaced(buf);
+    const char*      brl;
 
-    // Check all known handlers
+    // Check for bracket
+    brl = bracket_to_brl(name);
+    if (brl)
+    {
+        // Report successful translation
+        append_text(buf, brl);
+        return 1;
+    }
+
+    // Check all known symbols
     for (rec = symbols;  rec->mpName;  ++rec)
     {
         if (strcmp(name, rec->mpName) != 0)  continue;

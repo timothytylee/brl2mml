@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "mxml.h"
+#include "mathml_entity.h"
 #include "test_util.h"
 
 
@@ -139,6 +140,9 @@ do_main(int argc, char** argv)
 {
     // Parse command line
     parse_args(argc, argv);
+
+    // Setup entity callback for MathML
+    mxmlEntityAddCallback(mathml_entity_callback);
 
     // Process each argument in turn
     argc = gArgC;
