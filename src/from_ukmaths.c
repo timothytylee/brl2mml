@@ -2783,7 +2783,6 @@ fix_matrix(mxml_node_t* x)
 
     // Make sure there is a "matrix" attribute
     if (!mxmlElementGetAttr(x, "matrix"))  return;
-    mxmlElementDeleteAttr(x, "matrix");
 
     // Remove implicit separators to avoid being treated as a set
     mxmlElementSetAttr(el, "separators", "");
@@ -3004,12 +3003,21 @@ remove_unneeded_brackets(mxml_node_t* x)
     mxml_node_t* el = mxmlGetFirstChild(x);
     for (;  el;  el = mxmlGetNextSibling(el))
     {
+        mxml_node_t* first;
+        mxml_node_t* last;
         mxml_node_t* prev;
         mxml_node_t* next;
         int          is_fraction;
 
         // Process only <mfenced>
         if (!is_xml_element(el, "mfenced"))  continue;
+
+        // Skip extra processing on matrices
+        if (mxmlElementGetAttr(x, "matrix"))
+        {
+            mxmlElementDeleteAttr(x, "matrix");
+            continue;
+        }
 
         // Retain round brackets around sets
         if (strlen(mxmlElementGetAttr(el, "separators")) > 0)
@@ -3018,15 +3026,22 @@ remove_unneeded_brackets(mxml_node_t* x)
             continue;
         }
 
+        // Retain bracket if it encloses a <mtable>
+        if (is_xml_element(mxmlGetFirstChild(el), "mtable"))  continue;
+
+        // Retain bracket if there are multiple terms
+        first = mxmlGetFirstChild(el);
+        last  = mxmlGetLastChild(el);
+        if (first && (first != last))
+        {
+            // Group children nodes inside a <mrow> to allow proper spacing
+            group_siblings("mrow", first, last);
+            continue;
+        }
+
         // Make sure it is enclosed in round brackets
         if (strcmp(mxmlElementGetAttr(el, "open"), "(") != 0)  continue;
         if (strcmp(mxmlElementGetAttr(el, "close"), ")") != 0)  continue;
-
-        // Retain bracket if there are multiple terms
-        if (mxmlGetFirstChild(el) != mxmlGetLastChild(el))  continue;
-
-        // Retain bracket if it encloses a <mtable>
-        if (is_xml_element(mxmlGetFirstChild(el), "mtable"))  continue;
 
         // Check for fraction in current term
         is_fraction = is_mfrac(el);
