@@ -1,0 +1,11 @@
+--- mxml-2.9/mxml-file.c	2014-10-20 04:21:48.000000000 +1100
++++ mxml-2.9/mxml-file.c	2026-06-07 17:44:41.756446500 +1000
+@@ -18,7 +18,7 @@
+  * Include necessary headers...
+  */
+ 
+-#ifndef WIN32
++#if !defined(WIN32) || defined(__MINGW32__)
+ #  include <unistd.h>
+ #endif /* !WIN32 */
+ #include "mxml-private.h"

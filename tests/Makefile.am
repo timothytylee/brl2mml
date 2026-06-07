@@ -1,5 +1,5 @@
 AM_CFLAGS = -I $(top_builddir)/src
-LDADD = $(top_builddir)/src/libbrl2mml.la $(PTHREAD_LIBS)
+LDADD = $(top_builddir)/src/libbrl2mml.la
 
 noinst_HEADERS = test_util.h
 

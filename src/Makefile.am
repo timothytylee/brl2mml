@@ -12,7 +12,7 @@ libbrl2mml_la_SOURCES = \
     common.c
 libbrl2mml_la_DEPENDENCIES = $(top_builddir)/mxml-@MXML_VERSION@/libmxml.a
 libbrl2mml_la_LDFLAGS = \
-    -Wl,$(top_builddir)/mxml-@MXML_VERSION@/libmxml.a \
+    -Wl,$(top_builddir)/mxml-@MXML_VERSION@/libmxml.a $(PTHREAD_LIBS) \
     -Wl,--retain-symbols-file=brl2mml.sym \
     -export-symbols brl2mml.sym \
     -no-undefined \
